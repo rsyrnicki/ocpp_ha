@@ -466,7 +466,7 @@ class ChargePoint(cp):
 
         if "WallboxControl" in msg.topic:
             msg_json = json.loads(msg.payload.decode())
-            amps = msg_json["current"]
+            amps = msg_json["wallbox_set_current"]
             self.set_charge_rate(limit_amps=amps)
             _LOGGER.info("Set current to %sa", amps)
 
@@ -1294,7 +1294,7 @@ class ChargePoint(cp):
     @on(Action.StatusNotification)
     def on_status_notification(self, connector_id, error_code, status, **kwargs):
         """Handle a status notification."""
-        _LOGGER("self._metrics %s", self._metrics)
+        _LOGGER.info("self._metrics %s", self._metrics)
         payload = OrderedDict()
         payload['voltage'] = 0
         payload['current'] = 0
