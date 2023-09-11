@@ -1081,7 +1081,7 @@ class ChargePoint(cp):
         self.serial = serial
         self.allowed_tags.append(self.serial)
         _LOGGER.info("SERIAL: %s", self.serial)
-        self.mqtt_client.subscribe("homeassistant/WallboxControl/%s",  serial)
+        self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
         if serial is not None:
             identifiers.add((DOMAIN, serial))
 
