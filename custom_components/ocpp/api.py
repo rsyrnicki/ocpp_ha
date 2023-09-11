@@ -8,6 +8,10 @@ import logging
 from math import sqrt
 import ssl
 import time
+import json
+from collections import OrderedDict
+import paho.mqtt.client as pahomqtt
+from ocpp.exceptions import NotImplementedError
 
 from homeassistant.components.persistent_notification import DOMAIN as PN_DOMAIN
 from homeassistant.config_entries import ConfigEntry
@@ -19,7 +23,6 @@ import voluptuous as vol
 import websockets.connection
 import websockets.server
 
-from ocpp.exceptions import NotImplementedError
 from ocpp.messages import CallError
 from ocpp.routing import on
 from ocpp.v16 import ChargePoint as cp, call, call_result
@@ -319,6 +322,11 @@ class CentralSystem:
         }
 
 
+FIRST_RECONNECT_DELAY = 1
+RECONNECT_RATE = 2
+MAX_RECONNECT_COUNT = 12
+MAX_RECONNECT_DELAY = 60
+
 class ChargePoint(cp):
     """Server side representation of a charger."""
 
@@ -360,6 +368,102 @@ class ChargePoint(cp):
         self._metrics[csess.meter_start.value].unit = UnitOfMeasure.kwh.value
         self._attr_supported_features: int = 0
         self._metrics[cstat.reconnects.value].value: int = 0
+
+        # Added
+        self.allowed_tags = ["04E2BD1AAE4880"]
+        self.serial = ''
+        # MQTT Client
+        self.mqtt_user = ''
+        self.mqtt_password = ''
+        self.mqtt_server = '192.168.111.171'
+        self.mqtt_port = 1883
+        self.mqtt_client = pahomqtt.Client()
+        self.mqtt_keepalive = True
+        self.mqtt_client.on_connect = self.mqtt_on_connect
+        self.mqtt_client.on_disconnect = self.mqtt_on_disconnect
+        self.connected_flag = False
+        self.mqtt_client.on_message = self.mqtt_on_message
+
+        if self.mqtt_port != 1883:
+            _LOGGER.info('[OCPP MQTT Client start] mqtt: tls_set...')
+
+            self.mqtt_client.tls_set(ca_certs=None, certfile=None, keyfile=None,
+                            cert_reqs=ssl.CERT_REQUIRED,
+    #                        tls_version=ssl.PROTOCOL_TLS, ciphers=None)
+                            tls_version=ssl.PROTOCOL_TLSv1_2, ciphers=None)
+
+        if self.mqtt_user != '':
+            _LOGGER.info('[OCPP MQTT Client start] mqtt: set user/password.... ')
+            self.mqtt_client.username_pw_set(self.mqtt_user, self.mqtt_passwd)
+        _LOGGER.info('[OCPP MQTT Client start] mqtt: connecting.... ')
+
+        ### versuchsweise: Eine Schleife, die wartet bis die Verbindung zum Broker da ist. Wartezeit 2 Minuten
+        # Das hat den Sinn, dass überhaupt mal gewartet wird, damit nicht zu schnell direkt mit
+        # subscriber oder so was Fehler produziert werden und:
+        # nach dem Systemstart kann es etwas dauern, bis der Docker hochgefahren ist, erst dann
+        # macht Verbindung überhaupt Sinn damit der mosquitto broker zeit hat zu starten
+        loopCount = 0
+        while not self.connected_flag:
+            try:
+                self.mqtt_client.connect(self.mqtt_server, self.mqtt_port, self.mqtt_keepalive)
+                # start threaded loop
+                self.mqtt_client.loop_start()
+                # MQTT
+                payload = OrderedDict()
+                payload['wallbox_id'] = "0000"
+                payload['id_tag'] = "0000"
+                payload = json.dumps(payload)
+                topic = "homeassistant/WallboxInfo/0000"
+                self.mqtt_client.publish(topic, payload, True)
+            except Exception:
+                _LOGGER.info('[OCPP MQTT Client start] Exception in OnStart: {str(e)}')
+                self.connected_flag = False
+                return
+
+            # wait for next try or return -> caller should check connected_flag
+            if not self.connected_flag:
+                time.sleep(0.5)
+                loopCount = loopCount + 1
+                _LOGGER.info(f'[OCPP MQTT Client start] loop to connect: {str(loopCount)}')
+                if loopCount > 3:
+    #            if loopCount > 24:  # 2 Minutes (24*5 seconds)
+                    _LOGGER.info(f'[OCPP MQTT Client start] loop to connect cancelled, not connected')
+                    return
+        _LOGGER.info(f'[OCPP MQTT Client start] mqtt: loop started, connected, end of init.... ')
+
+### Nach __init__()
+    def mqtt_on_connect(self, client, userdata, flags, rc):
+        _LOGGER.info(f'Mqtt connected flags {str(flags)} result code {str(rc)}')
+        if rc == 0:
+            self.connected_flag = True
+            _LOGGER.info('mqtt: connected!')
+
+        _LOGGER.info('mqtt: on_connect %s', str(rc))
+        
+
+    def mqtt_on_disconnect(self, client, userdata, rc):
+        _LOGGER.info("Disconnected with result code: %s", rc)
+        reconnect_count, reconnect_delay = 0, FIRST_RECONNECT_DELAY
+        while reconnect_count < MAX_RECONNECT_COUNT:
+            _LOGGER.info("Reconnecting in %d seconds...", reconnect_delay)
+            time.sleep(reconnect_delay)
+
+            try:
+                client.reconnect()
+                _LOGGER.info("Reconnected successfully!")
+                return
+            except Exception as err:
+                _LOGGER.error("%s. Reconnect failed. Retrying...", err)
+
+            reconnect_delay *= RECONNECT_RATE
+            reconnect_delay = min(reconnect_delay, MAX_RECONNECT_DELAY)
+            reconnect_count += 1
+        _LOGGER.info("Reconnect failed after %s attempts. Exiting...", reconnect_count)
+
+
+    def mqtt_on_message(self, client, userdata, msg):
+        _LOGGER.info(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+
 
     async def post_connect(self):
         """Logic to be executed right after a charger connects."""
@@ -752,8 +856,8 @@ class ChargePoint(cp):
             schema = vol.Schema(vol.Url())
             try:
                 url = schema(upload_url)
-            except vol.MultipleInvalid as e:
-                _LOGGER.warning("Failed to parse url: %s", e)
+            except vol.MultipleInvalid as e_err:
+                _LOGGER.warning("Failed to parse url: %s", e_err)
             req = call.GetDiagnosticsPayload(location=url)
             resp = await self.call(req)
             _LOGGER.info("Response: %s", resp)
@@ -973,6 +1077,8 @@ class ChargePoint(cp):
             (DOMAIN, self.id),
         }
         serial = boot_info.get(om.charge_point_serial_number.name, None)
+        self.serial = serial
+        self.mqtt_client.subscribe("homeassistant/WallboxControl/%s",  serial)
         if serial is not None:
             identifiers.add((DOMAIN, serial))
 
@@ -1261,16 +1367,26 @@ class ChargePoint(cp):
             if id_tag == id_entry:
                 # get the authorization status, use the default if not configured
                 auth_status = auth_entry.get(CONF_AUTH_STATUS, default_auth_status)
-                _LOGGER.debug(
-                    f"id_tag='{id_tag}' found in auth_list, authorization_status='{auth_status}'"
-                )
+                _LOGGER.debug("id_tag='%s' found in auth_list, authorization_status='%s'", id_tag, auth_status)
                 break
 
         if auth_status is None:
             auth_status = default_auth_status
-            _LOGGER.debug(
-                f"id_tag='{id_tag}' not found in auth_list, default authorization_status='{auth_status}'"
-            )
+            _LOGGER.debug("id_tag='%s' not found in auth_list, default authorization_status='%s'", id_tag, auth_status)
+
+        
+        if id_tag not in self.allowed_tags:
+            return None
+        else:
+            # MQTT
+            payload = OrderedDict()
+            payload['wallbox_id'] = self.serial
+            payload['id_tag'] = id_tag
+            payload = json.dumps(payload)
+            topic = f"homeassistant/WallboxInfo/{self.serial}"
+
+            self.mqtt_client.publish(topic, payload, True)
+
         return auth_status
 
     @on(Action.Authorize)
