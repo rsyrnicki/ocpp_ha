@@ -1080,6 +1080,7 @@ class ChargePoint(cp):
         serial = boot_info.get(om.charge_point_serial_number.name, None)
         self.serial = serial
         self.allowed_tags.append(self.serial)
+        _LOGGER.info("SERIAL: %s", self.serial)
         self.mqtt_client.subscribe("homeassistant/WallboxControl/%s",  serial)
         if serial is not None:
             identifiers.add((DOMAIN, serial))
