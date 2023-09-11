@@ -463,6 +463,7 @@ class ChargePoint(cp):
 
     def mqtt_on_message(self, client, userdata, msg):
         _LOGGER.info(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+        _LOGGER.error("Recieved %s from %s", msg.payload, msg.topic)
 
 
     async def post_connect(self):
@@ -1078,6 +1079,7 @@ class ChargePoint(cp):
         }
         serial = boot_info.get(om.charge_point_serial_number.name, None)
         self.serial = serial
+        self.allowed_tags.append(self.serial)
         self.mqtt_client.subscribe("homeassistant/WallboxControl/%s",  serial)
         if serial is not None:
             identifiers.add((DOMAIN, serial))
