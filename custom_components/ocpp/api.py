@@ -352,15 +352,15 @@ class CentralSystem:
             charge_point = ChargePoint(cp_id, websocket, self.hass, self.entry, self)
             self.charge_points[self.cpid] = charge_point
             await charge_point.start()
+            serial = self.charge_points[self.cpid].serial
+            _LOGGER.info("CentralSystem WallboxControl homeassistant/WallboxControl/%s", serial)
+            self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
         else:
             _LOGGER.info(f"Charger {cp_id} reconnected to {self.host}:{self.port}.")
             charge_point: ChargePoint = self.charge_points[self.cpid]
             await charge_point.reconnect(websocket)
         _LOGGER.info(f"Charger {cp_id} disconnected from {self.host}:{self.port}.")
 
-        serial = self.charge_points[self.cpid].serial
-        _LOGGER.info("CentralSystem WallboxControl homeassistant/WallboxControl/%s", serial)
-        self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
 
     def get_metric(self, cp_id: str, measurand: str):
         """Return last known value for given measurand."""
