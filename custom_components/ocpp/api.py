@@ -307,7 +307,7 @@ class CentralSystem:
 
     def reconnect_mqtt(self, serial):
         """Reconnect happens automatically, resubscribe is needed."""
-        self.mqtt_client = self.mqtt_on_message
+        self.mqtt_client.on_message = self.mqtt_on_message
         _LOGGER.info("CentralSystem WallboxControl homeassistant/WallboxControl/%s", serial)
         self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
 
