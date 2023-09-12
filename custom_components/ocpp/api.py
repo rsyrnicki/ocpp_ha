@@ -370,36 +370,42 @@ class CentralSystem:
         """Return last known value for given measurand."""
         if cp_id in self.charge_points:
             return self.charge_points[cp_id]._metrics[measurand].value
+        _LOGGER.warning("[get_metric] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
         return None
 
     def get_unit(self, cp_id: str, measurand: str):
         """Return unit of given measurand."""
         if cp_id in self.charge_points:
             return self.charge_points[cp_id]._metrics[measurand].unit
+        _LOGGER.warning("[get_unit] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
         return None
 
     def get_ha_unit(self, cp_id: str, measurand: str):
         """Return home assistant unit of given measurand."""
         if cp_id in self.charge_points:
             return self.charge_points[cp_id]._metrics[measurand].ha_unit
+        _LOGGER.warning("[get_unit] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
         return None
 
     def get_extra_attr(self, cp_id: str, measurand: str):
         """Return last known extra attributes for given measurand."""
         if cp_id in self.charge_points:
             return self.charge_points[cp_id]._metrics[measurand].extra_attr
+        _LOGGER.warning("[get_extra_attr] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
         return None
 
     def get_available(self, cp_id: str):
         """Return whether the charger is available."""
         if cp_id in self.charge_points:
             return self.charge_points[cp_id].status == STATE_OK
+        _LOGGER.warning("[get_available] cp_id %s not found in the charge_points dict", cp_id)
         return False
 
     def get_supported_features(self, cp_id: str):
         """Return what profiles the charger supports."""
         if cp_id in self.charge_points:
             return self.charge_points[cp_id].supported_features
+        _LOGGER.warning("[get_supported_features] cp_id %s not found in the charge_points dict", cp_id)
         return 0
     
 
@@ -413,6 +419,7 @@ class CentralSystem:
         """Set the maximum charge rate in amps."""
         if cp_id in self.charge_points:
             return await self.charge_points[cp_id].set_charge_rate(limit_amps=value)
+        _LOGGER.warning("[set_max_charge_rate_amps]cp_id %s not found in the charge_points dict", cp_id)
         return False
 
     async def set_charger_state(
@@ -431,6 +438,7 @@ class CentralSystem:
                 resp = await self.charge_points[cp_id].reset()
             if service_name == csvcs.service_unlock.name:
                 resp = await self.charge_points[cp_id].unlock()
+        _LOGGER.warning("[set_charger_state] cp_id %s not found in the charge_points dict", cp_id)
         return resp
 
     async def update(self, cp_id: str):
