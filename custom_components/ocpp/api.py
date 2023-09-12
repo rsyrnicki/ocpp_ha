@@ -1608,6 +1608,7 @@ class ChargePoint(cp):
         metrics = {"wallbox_id": self.serial}
         for index, value in self._metrics.items():
             try:
+                test = json.dumps({"test": value._value})
                 if str(value._value).lower() != "unavailable":
                     metrics[index] = value._value
             except TypeError as te:
