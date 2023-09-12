@@ -438,9 +438,6 @@ class CentralSystem:
             self.hass.async_create_task(
                 entity_component.async_update_entity(self.hass, ent.entity_id)
             )
-        serial = self.charge_points[self.cpid].serial
-        _LOGGER.info("CentralSystem WallboxControl homeassistant/WallboxControl/%s", serial)
-        self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
 
     def device_info(self):
         """Return device information."""
@@ -1213,6 +1210,10 @@ class ChargePoint(cp):
             await self.run(
                 [super().start(), self.post_connect(), self.monitor_connection()]
             )
+        
+        serial = self.charge_points[self.cpid].serial
+        _LOGGER.info("CentralSystem WallboxControl homeassistant/WallboxControl/%s", serial)
+        self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
 
     async def async_update_device_info(self, boot_info: dict):
         """Update device info asynchronuously."""
@@ -1226,7 +1227,7 @@ class ChargePoint(cp):
         self.serial = serial
         self.allowed_tags.append(self.serial)
         _LOGGER.info("SERIAL: %s", self.serial)
-        self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
+        # self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
         if serial is not None:
             identifiers.add((DOMAIN, serial))
 
