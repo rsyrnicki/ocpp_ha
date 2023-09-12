@@ -193,7 +193,7 @@ class CentralSystem:
         self.mqtt_password = ''
         self.mqtt_server = '192.168.111.171'
         self.mqtt_port = 1883
-        self.mqtt_client = pahomqtt.Client()
+        self.mqtt_client = pahomqtt.Client(client_id="WBCS")
         self.mqtt_keepalive = True
         self.mqtt_client.on_connect = self.mqtt_on_connect
         self.mqtt_client.on_disconnect = self.mqtt_on_disconnect
@@ -501,7 +501,8 @@ class ChargePoint(cp):
         self.mqtt_password = ''
         self.mqtt_server = '192.168.111.171'
         self.mqtt_port = 1883
-        self.mqtt_client = pahomqtt.Client()
+        # TODO find unique client ID for every ChargePoint
+        self.mqtt_client = pahomqtt.Client(client_id="WBCP_")
         self.mqtt_keepalive = True
         self.mqtt_client.on_connect = self.mqtt_on_connect
         self.mqtt_client.on_disconnect = self.mqtt_on_disconnect
