@@ -1106,6 +1106,19 @@ class ChargePoint(cp):
         connection = self._connection
         timeout_counter = 0
         while connection.open:
+            # Send values over MQTT
+            metrics = {"wallbox_id": self.serial}
+            for index, value in self._metrics.items():
+                try:
+                    # If value is not JSON serializable, TypeError will be thrown. 
+                    test = json.dumps({"test": value._value})
+                    if str(value._value).lower() != "unavailable":
+                        metrics[index] = value._value
+                except TypeError:
+                    pass
+            payload = json.dumps(metrics)
+            topic = f"homeassistant/WallboxMetrics/{self.serial}"
+            self.mqtt_client.publish(topic, payload, True)
             try:
                 await asyncio.sleep(self.central.websocket_ping_interval)
                 time0 = time.perf_counter()
@@ -1605,17 +1618,6 @@ class ChargePoint(cp):
         """Handle a Heartbeat."""
         now = datetime.now(tz=timezone.utc)
         self._metrics[cstat.heartbeat.value].value = now
-        metrics = {"wallbox_id": self.serial}
-        for index, value in self._metrics.items():
-            try:
-                test = json.dumps({"test": value._value})
-                if str(value._value).lower() != "unavailable":
-                    metrics[index] = value._value
-            except TypeError as te:
-                pass
-        payload = json.dumps(metrics)
-        topic = f"homeassistant/WallboxMetrics/{self.serial}"
-        self.mqtt_client.publish(topic, payload, True)
         self.hass.async_create_task(self.central.update(self.central.cpid))
         return call_result.HeartbeatPayload(
             current_time=now.strftime("%Y-%m-%dT%H:%M:%SZ")
