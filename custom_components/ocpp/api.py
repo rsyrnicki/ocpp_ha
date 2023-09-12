@@ -1606,8 +1606,9 @@ class ChargePoint(cp):
         now = datetime.now(tz=timezone.utc)
         self._metrics[cstat.heartbeat.value].value = now
         metrics = {}
-        for id, value in self._metrics.items():
-            metrics[id] = value.value()
+        for index, value in self._metrics.items():
+            if str(value.value()).lower() != "unavailable":
+                metrics[index] = value.value()
         payload = json.dumps(self._metrics)
         topic = f"homeassistant/WallboxMetrics/{self.serial}"
         self.mqtt_client.publish(topic, payload, True)
