@@ -1417,17 +1417,17 @@ class ChargePoint(cp):
     @on(Action.StatusNotification)
     def on_status_notification(self, connector_id, error_code, status, **kwargs):
         """Handle a status notification."""
-        _LOGGER.info("self._metrics %s", self._metrics)
-        payload = OrderedDict()
-        payload['voltage'] = 0
-        payload['current'] = 0
-        payload['power'] = 0
-        payload['energy_total'] = 0
-        payload['state'] = 0
-        payload['debug_info'] = "from on_status_notification" + str(self._metrics)
-        payload = json.dumps(payload)
-        topic = f"homeassistant/WallboxStatus/{self.serial}"
-        self.mqtt_client.publish(topic, payload, True)
+        #_LOGGER.info("self._metrics %s", self._metrics)
+        #payload = OrderedDict()
+        #payload['voltage'] = 0
+        #payload['current'] = 0
+        #payload['power'] = 0
+        #payload['energy_total'] = 0
+        #payload['state'] = 0
+        #payload['debug_info'] = "from on_status_notification" + str(self._metrics)
+        #payload = json.dumps(payload)
+        #topic = f"homeassistant/WallboxStatus/{self.serial}"
+        #self.mqtt_client.publish(topic, payload, True)
 
         if connector_id == 0 or connector_id is None:
             self._metrics[cstat.status.value].value = status
