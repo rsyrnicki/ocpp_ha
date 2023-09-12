@@ -188,6 +188,122 @@ class CentralSystem:
             )
         else:
             self.ssl_context = None
+                # MQTT Client
+        self.mqtt_user = ''
+        self.mqtt_password = ''
+        self.mqtt_server = '192.168.111.171'
+        self.mqtt_port = 1883
+        self.mqtt_client = pahomqtt.Client()
+        self.mqtt_keepalive = True
+        self.mqtt_client.on_connect = self.mqtt_on_connect
+        self.mqtt_client.on_disconnect = self.mqtt_on_disconnect
+        self.connected_flag = False
+        self.mqtt_client.on_message = self.mqtt_on_message
+
+        if self.mqtt_port != 1883:
+            _LOGGER.info('[OCPP MQTT Client start] mqtt: tls_set...')
+
+            self.mqtt_client.tls_set(ca_certs=None, certfile=None, keyfile=None,
+                            cert_reqs=ssl.CERT_REQUIRED,
+    #                        tls_version=ssl.PROTOCOL_TLS, ciphers=None)
+                            tls_version=ssl.PROTOCOL_TLSv1_2, ciphers=None)
+
+        if self.mqtt_user != '':
+            _LOGGER.info('[OCPP MQTT Client start] mqtt: set user/password.... ')
+            self.mqtt_client.username_pw_set(self.mqtt_user, self.mqtt_passwd)
+        _LOGGER.info('[OCPP MQTT Client start] mqtt: connecting.... ')
+
+        ### versuchsweise: Eine Schleife, die wartet bis die Verbindung zum Broker da ist. Wartezeit 2 Minuten
+        # Das hat den Sinn, dass überhaupt mal gewartet wird, damit nicht zu schnell direkt mit
+        # subscriber oder so was Fehler produziert werden und:
+        # nach dem Systemstart kann es etwas dauern, bis der Docker hochgefahren ist, erst dann
+        # macht Verbindung überhaupt Sinn damit der mosquitto broker zeit hat zu starten
+        loopCount = 0
+        while not self.connected_flag:
+            try:
+                self.mqtt_client.connect(self.mqtt_server, self.mqtt_port, self.mqtt_keepalive)
+                # start threaded loop
+                self.mqtt_client.loop_start()
+                # MQTT
+                payload = OrderedDict()
+                payload['wallbox_id'] = "0000"
+                payload['id_tag'] = "0000"
+                payload = json.dumps(payload)
+                topic = "homeassistant/WallboxInfo/0000"
+                self.mqtt_client.publish(topic, payload, True)
+            except Exception as exc:
+                _LOGGER.info("[OCPP MQTT Client start] Exception in OnStart: %s", exc)
+                self.connected_flag = False
+                return
+
+            # wait for next try or return -> caller should check connected_flag
+            if not self.connected_flag:
+                time.sleep(0.5)
+                loopCount = loopCount + 1
+                _LOGGER.info('[OCPP MQTT Client start] loop to connect: %s', str(loopCount))
+                if loopCount > 3:
+    #            if loopCount > 24:  # 2 Minutes (24*5 seconds)
+                    _LOGGER.info("[OCPP MQTT Client start] loop to connect cancelled, not connected")
+                    return
+        _LOGGER.info('[OCPP MQTT Client start] mqtt: loop started, connected, end of init.... ')
+
+
+    def mqtt_on_connect(self, client, userdata, flags, rc):
+        _LOGGER.info(f'Mqtt connected flags {str(flags)} result code {str(rc)}')
+        if rc == 0:
+            self.connected_flag = True
+            _LOGGER.info('mqtt: connected!')
+
+        _LOGGER.info('mqtt: on_connect %s', str(rc))
+        
+
+    def mqtt_on_disconnect(self, client, userdata, rc):
+        _LOGGER.info("Disconnected with result code: %s", rc)
+        reconnect_count, reconnect_delay = 0, FIRST_RECONNECT_DELAY
+        while reconnect_count < MAX_RECONNECT_COUNT:
+            _LOGGER.info("Reconnecting in %d seconds...", reconnect_delay)
+            time.sleep(reconnect_delay)
+
+            try:
+                client.reconnect()
+                _LOGGER.info("Reconnected successfully!")
+                return
+            except Exception as err:
+                _LOGGER.error("%s. Reconnect failed. Retrying...", err)
+
+            reconnect_delay *= RECONNECT_RATE
+            reconnect_delay = min(reconnect_delay, MAX_RECONNECT_DELAY)
+            reconnect_count += 1
+        _LOGGER.info("Reconnect failed after %s attempts. Exiting...", reconnect_count)
+
+
+    def mqtt_on_message(self, client, userdata, msg):
+        _LOGGER.info(f"[Central System]Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+
+        if "WallboxControl" in msg.topic:
+            msg_json = json.loads(msg.payload.decode())
+            cp_id = self.find_cp_ip_by_serial(msg_json['wallbox_id'])
+            if 'wallbox_set_current' in msg_json:
+                amps = float(msg_json["wallbox_set_current"])
+                self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
+                _LOGGER.info("Set current to %sa", amps)
+            if 'wallbox_set_state' in msg_json:
+                state = msg_json["wallbox_set_state"]
+                if state == 'off':
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False))
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
+                if state == 'active':
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name))
+                if state == 'standby':
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
+                if state == 'reset':
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True))
+                if state == 'unlock':
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True))
+                _LOGGER.info("Set state to %s", state)
+
 
     @staticmethod
     async def create(hass: HomeAssistant, entry: ConfigEntry):
@@ -277,6 +393,13 @@ class CentralSystem:
         if cp_id in self.charge_points:
             return self.charge_points[cp_id].supported_features
         return 0
+    
+
+    def find_cp_ip_by_serial(self, serial):
+        for id, value in self.charge_points.items():
+            if value.serial == serial:
+                return id
+        return False
 
     async def set_max_charge_rate_amps(self, cp_id: str, value: float):
         """Set the maximum charge rate in amps."""
@@ -415,8 +538,8 @@ class ChargePoint(cp):
                 payload = json.dumps(payload)
                 topic = "homeassistant/WallboxInfo/0000"
                 self.mqtt_client.publish(topic, payload, True)
-            except Exception:
-                _LOGGER.info('[OCPP MQTT Client start] Exception in OnStart: {str(e)}')
+            except Exception as ee:
+                _LOGGER.info("[OCPP MQTT Client start] Exception in OnStart: %s", str(ee))
                 self.connected_flag = False
                 return
 
@@ -424,12 +547,12 @@ class ChargePoint(cp):
             if not self.connected_flag:
                 time.sleep(0.5)
                 loopCount = loopCount + 1
-                _LOGGER.info(f'[OCPP MQTT Client start] loop to connect: {str(loopCount)}')
+                _LOGGER.info('[OCPP MQTT Client start] loop to connect: %s', str(loopCount))
                 if loopCount > 3:
     #            if loopCount > 24:  # 2 Minutes (24*5 seconds)
-                    _LOGGER.info(f'[OCPP MQTT Client start] loop to connect cancelled, not connected')
+                    _LOGGER.info("[OCPP MQTT Client start] loop to connect cancelled, not connected")
                     return
-        _LOGGER.info(f'[OCPP MQTT Client start] mqtt: loop started, connected, end of init.... ')
+        _LOGGER.info('[OCPP MQTT Client start] mqtt: loop started, connected, end of init.... ')
 
 ### Nach __init__()
     def mqtt_on_connect(self, client, userdata, flags, rc):
@@ -464,11 +587,11 @@ class ChargePoint(cp):
     def mqtt_on_message(self, client, userdata, msg):
         _LOGGER.info(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
 
-        if "WallboxControl" in msg.topic:
-            msg_json = json.loads(msg.payload.decode())
-            amps = msg_json["wallbox_set_current"]
-            self.set_charge_rate(limit_amps=amps)
-            _LOGGER.info("Set current to %sa", amps)
+        #if "WallboxControl" in msg.topic:
+        #    msg_json = json.loads(msg.payload.decode())
+        #    amps = msg_json["wallbox_set_current"]
+        #    self.hass.async_create_task(self.set_charge_rate(limit_amps=amps))
+        #    _LOGGER.info("Set current to %sa", amps)
 
 
     async def post_connect(self):
@@ -1482,6 +1605,9 @@ class ChargePoint(cp):
         """Handle a Heartbeat."""
         now = datetime.now(tz=timezone.utc)
         self._metrics[cstat.heartbeat.value].value = now
+        payload = json.dumps(self._metrics)
+        topic = f"homeassistant/WallboxMetrics/{self.serial}"
+        self.mqtt_client.publish(topic, payload, True)
         self.hass.async_create_task(self.central.update(self.central.cpid))
         return call_result.HeartbeatPayload(
             current_time=now.strftime("%Y-%m-%dT%H:%M:%SZ")
