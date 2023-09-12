@@ -307,6 +307,7 @@ class CentralSystem:
 
     def reconnect_mqtt(self, serial):
         """Reconnect happens automatically, resubscribe is needed."""
+        self.mqtt_client = self.mqtt_on_message
         _LOGGER.info("CentralSystem WallboxControl homeassistant/WallboxControl/%s", serial)
         self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
 
@@ -1217,7 +1218,6 @@ class ChargePoint(cp):
             await self.run(
                 [super().start(), self.post_connect(), self.monitor_connection()]
             )
-        self.central.reconnect_mqtt(serial=self.serial)
 
     async def async_update_device_info(self, boot_info: dict):
         """Update device info asynchronuously."""
@@ -1451,6 +1451,8 @@ class ChargePoint(cp):
         #payload = json.dumps(payload)
         #topic = f"homeassistant/WallboxStatus/{self.serial}"
         #self.mqtt_client.publish(topic, payload, True)
+
+        self.central.reconnect_mqtt(serial=self.serial)
 
         if connector_id == 0 or connector_id is None:
             self._metrics[cstat.status.value].value = status
