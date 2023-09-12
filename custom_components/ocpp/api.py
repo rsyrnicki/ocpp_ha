@@ -1609,7 +1609,7 @@ class ChargePoint(cp):
         for index, value in self._metrics.items():
             if str(value.value()).lower() != "unavailable":
                 metrics[index] = value.value()
-        payload = json.dumps(self._metrics)
+        payload = json.dumps(metrics)
         topic = f"homeassistant/WallboxMetrics/{self.serial}"
         self.mqtt_client.publish(topic, payload, True)
         self.hass.async_create_task(self.central.update(self.central.cpid))
