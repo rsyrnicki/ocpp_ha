@@ -305,6 +305,12 @@ class CentralSystem:
                 _LOGGER.info("Set state to %s", state)
 
 
+    def reconnect_mqtt(self, serial):
+        """Reconnect happens automatically, resubscribe is needed."""
+        _LOGGER.info("CentralSystem WallboxControl homeassistant/WallboxControl/%s", serial)
+        self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
+
+
     @staticmethod
     async def create(hass: HomeAssistant, entry: ConfigEntry):
         """Create instance and start listening for OCPP connections on given port."""
@@ -1211,10 +1217,7 @@ class ChargePoint(cp):
             await self.run(
                 [super().start(), self.post_connect(), self.monitor_connection()]
             )
-        
-        serial = self.charge_points[self.cpid].serial
-        _LOGGER.info("CentralSystem WallboxControl homeassistant/WallboxControl/%s", serial)
-        self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
+        self.central.reconnect_mqtt(serial=self.serial)
 
     async def async_update_device_info(self, boot_info: dict):
         """Update device info asynchronuously."""
