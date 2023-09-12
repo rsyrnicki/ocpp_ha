@@ -1605,7 +1605,7 @@ class ChargePoint(cp):
         """Handle a Heartbeat."""
         now = datetime.now(tz=timezone.utc)
         self._metrics[cstat.heartbeat.value].value = now
-        metrics = {}
+        metrics = {"wallbox_id": self.serial}
         for index, value in self._metrics.items():
             try:
                 if str(value._value).lower() != "unavailable":
