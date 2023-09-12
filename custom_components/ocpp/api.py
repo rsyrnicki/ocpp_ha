@@ -282,7 +282,7 @@ class CentralSystem:
 
         if "WallboxControl" in msg.topic:
             msg_json = json.loads(msg.payload.decode())
-            cp_id = self.find_cp_ip_by_serial(msg_json['wallbox_id'])
+            cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
             if 'wallbox_set_current' in msg_json:
                 amps = float(msg_json["wallbox_set_current"])
                 self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
@@ -358,6 +358,10 @@ class CentralSystem:
             await charge_point.reconnect(websocket)
         _LOGGER.info(f"Charger {cp_id} disconnected from {self.host}:{self.port}.")
 
+        serial = self.charge_points[self.cpid].serial
+        _LOGGER.info("CentralSystem WallboxControl homeassistant/WallboxControl/%s", serial)
+        self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
+
     def get_metric(self, cp_id: str, measurand: str):
         """Return last known value for given measurand."""
         if cp_id in self.charge_points:
@@ -395,7 +399,7 @@ class CentralSystem:
         return 0
     
 
-    def find_cp_ip_by_serial(self, serial):
+    def find_cp_id_by_serial(self, serial):
         for id, value in self.charge_points.items():
             if value.serial == serial:
                 return id
