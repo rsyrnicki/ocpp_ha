@@ -3,15 +3,14 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 import logging
 from math import sqrt
 import ssl
 import time
 import json
-from collections import OrderedDict
 import paho.mqtt.client as pahomqtt
-from ocpp.exceptions import NotImplementedError
 
 from homeassistant.components.persistent_notification import DOMAIN as PN_DOMAIN
 from homeassistant.config_entries import ConfigEntry
@@ -23,6 +22,7 @@ import voluptuous as vol
 import websockets.connection
 import websockets.server
 
+from ocpp.exceptions import NotImplementedError
 from ocpp.messages import CallError
 from ocpp.routing import on
 from ocpp.v16 import ChargePoint as cp, call, call_result
@@ -50,6 +50,8 @@ from ocpp.v16.enums import (
     UnitOfMeasure,
     UnlockStatus,
 )
+
+from .auth_data import MQTT_USER, MQTT_PASSWORD, MQTT_SERVER, MQTT_PORT, MQTT_TOPIC_PREFIX
 
 from .const import (
     CONF_AUTH_LIST,
@@ -189,10 +191,10 @@ class CentralSystem:
         else:
             self.ssl_context = None
                 # MQTT Client
-        self.mqtt_user = ''
-        self.mqtt_password = ''
-        self.mqtt_server = '192.168.111.171'
-        self.mqtt_port = 1883
+        self.mqtt_user = MQTT_USER
+        self.mqtt_password = MQTT_PASSWORD
+        self.mqtt_server = MQTT_SERVER
+        self.mqtt_port = MQTT_PORT
         self.mqtt_client = pahomqtt.Client(client_id="WBCS")
         self.mqtt_keepalive = True
         self.mqtt_client.on_connect = self.mqtt_on_connect
@@ -229,7 +231,7 @@ class CentralSystem:
                 payload['wallbox_id'] = "0000"
                 payload['id_tag'] = "0000"
                 payload = json.dumps(payload)
-                topic = "homeassistant/WallboxInfo/0000"
+                topic = f"{MQTT_TOPIC_PREFIX}/WallboxInfo/0000"
                 self.mqtt_client.publish(topic, payload, True)
             except Exception as exc:
                 _LOGGER.info("[OCPP MQTT Client start] Exception in OnStart: %s", exc)
@@ -286,7 +288,7 @@ class CentralSystem:
             if 'wallbox_set_current' in msg_json:
                 amps = float(msg_json["wallbox_set_current"])
                 self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
-                _LOGGER.info("Set current to %sa", amps)
+                _LOGGER.info("Set current to %sA", amps)
             if 'wallbox_set_state' in msg_json:
                 state = msg_json["wallbox_set_state"]
                 if state == 'off':
@@ -308,8 +310,8 @@ class CentralSystem:
     def reconnect_mqtt(self, serial):
         """Reconnect happens automatically, resubscribe is needed."""
         self.mqtt_client.on_message = self.mqtt_on_message
-        _LOGGER.info("CentralSystem WallboxControl homeassistant/WallboxControl/%s", serial)
-        self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
+        _LOGGER.info(f"CentralSystem WallboxControl {MQTT_TOPIC_PREFIX}WallboxControl/%s", serial)
+        self.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}/WallboxControl/{serial}")
 
 
     @staticmethod
@@ -410,9 +412,10 @@ class CentralSystem:
     
 
     def find_cp_id_by_serial(self, serial):
-        for id, value in self.charge_points.items():
+        for index, value in self.charge_points.items():
+            _LOGGER.info("id: %s_____________value: %s", index, value)
             if value.serial == serial:
-                return id
+                return index
         return False
 
     async def set_max_charge_rate_amps(self, cp_id: str, value: float):
@@ -512,10 +515,10 @@ class ChargePoint(cp):
         self.allowed_tags = ["04E2BD1AAE4880"]
         self.serial = ''
         # MQTT Client
-        self.mqtt_user = ''
-        self.mqtt_password = ''
-        self.mqtt_server = '192.168.111.171'
-        self.mqtt_port = 1883
+        self.mqtt_user = MQTT_USER
+        self.mqtt_password = MQTT_PASSWORD
+        self.mqtt_server = MQTT_SERVER
+        self.mqtt_port = MQTT_PORT
         # TODO find unique client ID for every ChargePoint
         self.mqtt_client = pahomqtt.Client(client_id="WBCP_")
         self.mqtt_keepalive = True
@@ -553,7 +556,7 @@ class ChargePoint(cp):
                 payload['wallbox_id'] = "0000"
                 payload['id_tag'] = "0000"
                 payload = json.dumps(payload)
-                topic = "homeassistant/WallboxInfo/0000"
+                topic = f"{MQTT_TOPIC_PREFIX}WallboxInfo/0000"
                 self.mqtt_client.publish(topic, payload, True)
             except Exception as ee:
                 _LOGGER.info("[OCPP MQTT Client start] Exception in OnStart: %s", str(ee))
@@ -608,7 +611,7 @@ class ChargePoint(cp):
         #    msg_json = json.loads(msg.payload.decode())
         #    amps = msg_json["wallbox_set_current"]
         #    self.hass.async_create_task(self.set_charge_rate(limit_amps=amps))
-        #    _LOGGER.info("Set current to %sa", amps)
+        #    _LOGGER.info("Set current to %sA", amps)
 
 
     async def post_connect(self):
@@ -1134,7 +1137,7 @@ class ChargePoint(cp):
                 except TypeError:
                     pass
             payload = json.dumps(metrics)
-            topic = f"homeassistant/WallboxMetrics/{self.serial}"
+            topic = f"{MQTT_TOPIC_PREFIX}WallboxMetrics/{self.serial}"
             self.mqtt_client.publish(topic, payload, True)
             try:
                 await asyncio.sleep(self.central.websocket_ping_interval)
@@ -1239,7 +1242,7 @@ class ChargePoint(cp):
         self.serial = serial
         self.allowed_tags.append(self.serial)
         _LOGGER.info("SERIAL: %s", self.serial)
-        # self.mqtt_client.subscribe(f"homeassistant/WallboxControl/{serial}")
+        # self.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}WallboxControl/{serial}")
         self.central.reconnect_mqtt(self.serial)
         if serial is not None:
             identifiers.add((DOMAIN, serial))
@@ -1457,7 +1460,7 @@ class ChargePoint(cp):
         #payload['state'] = 0
         #payload['debug_info'] = "from on_status_notification" + str(self._metrics)
         #payload = json.dumps(payload)
-        #topic = f"homeassistant/WallboxStatus/{self.serial}"
+        #topic = f"{MQTT_TOPIC_PREFIX}WallboxStatus/{self.serial}"
         #self.mqtt_client.publish(topic, payload, True)
 
         self.central.reconnect_mqtt(serial=self.serial)
@@ -1549,18 +1552,17 @@ class ChargePoint(cp):
             auth_status = default_auth_status
             _LOGGER.debug("id_tag='%s' not found in auth_list, default authorization_status='%s'", id_tag, auth_status)
 
-        
         if id_tag not in self.allowed_tags:
             return None
-        else:
-            # MQTT
-            payload = OrderedDict()
-            payload['wallbox_id'] = self.serial
-            payload['id_tag'] = id_tag
-            payload = json.dumps(payload)
-            topic = f"homeassistant/WallboxInfo/{self.serial}"
+        
+        # MQTT
+        payload = OrderedDict()
+        payload['wallbox_id'] = self.serial
+        payload['id_tag'] = id_tag
+        payload = json.dumps(payload)
+        topic = f"{MQTT_TOPIC_PREFIX}WallboxInfo/{self.serial}"
 
-            self.mqtt_client.publish(topic, payload, True)
+        self.mqtt_client.publish(topic, payload, True)
 
         return auth_status
 
