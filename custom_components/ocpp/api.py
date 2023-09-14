@@ -413,8 +413,8 @@ class CentralSystem:
 
     def find_cp_id_by_serial(self, serial):
         for index, value in self.charge_points.items():
-            _LOGGER.info("id: %s_____________value: %s", index, value.serial)
-            if value.serial == serial:
+            _LOGGER.info("id: %s_____________value: %s    %s", index, str(value.serial), value._meters["ID"])
+            if value.serial == serial or value._meters["ID"] == serial:
                 return index
         return False
 
