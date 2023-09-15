@@ -557,7 +557,7 @@ class ChargePoint(cp):
                 payload['wallbox_id'] = "0000"
                 payload['id_tag'] = "0000"
                 payload = json.dumps(payload)
-                topic = f"{MQTT_TOPIC_PREFIX}WallboxInfo/0000"
+                topic = f"{MQTT_TOPIC_PREFIX}/WallboxInfo/0000"
                 self.mqtt_client.publish(topic, payload, True)
             except Exception as ee:
                 _LOGGER.info("[OCPP MQTT Client start] Exception in OnStart: %s", str(ee))
@@ -1138,7 +1138,7 @@ class ChargePoint(cp):
                 except TypeError:
                     pass
             payload = json.dumps(metrics)
-            topic = f"{MQTT_TOPIC_PREFIX}WallboxMetrics/{self.serial}"
+            topic = f"{MQTT_TOPIC_PREFIX}/WallboxMetrics/{self.serial}"
             self.mqtt_client.publish(topic, payload, True)
             try:
                 await asyncio.sleep(self.central.websocket_ping_interval)
@@ -1461,7 +1461,7 @@ class ChargePoint(cp):
         #payload['state'] = 0
         #payload['debug_info'] = "from on_status_notification" + str(self._metrics)
         #payload = json.dumps(payload)
-        #topic = f"{MQTT_TOPIC_PREFIX}WallboxStatus/{self.serial}"
+        #topic = f"{MQTT_TOPIC_PREFIX}/WallboxStatus/{self.serial}"
         #self.mqtt_client.publish(topic, payload, True)
 
         self.central.reconnect_mqtt(serial=self.serial)
@@ -1561,7 +1561,7 @@ class ChargePoint(cp):
         payload['wallbox_id'] = self.serial
         payload['id_tag'] = id_tag
         payload = json.dumps(payload)
-        topic = f"{MQTT_TOPIC_PREFIX}WallboxInfo/{self.serial}"
+        topic = f"{MQTT_TOPIC_PREFIX}/WallboxInfo/{self.serial}"
 
         self.mqtt_client.publish(topic, payload, True)
 
