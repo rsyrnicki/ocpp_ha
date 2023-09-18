@@ -288,7 +288,12 @@ class CentralSystem:
         _LOGGER.info(f"[Central System]Received `{msg.payload.decode()}` from `{msg.topic}` topic")
 
         if "WallboxControl" in msg.topic:
-            msg_json = json.loads(msg.payload.decode())
+            try:
+                msg_json = json.loads(msg.payload.decode())
+            except json.decoder.JSONDecodeError:
+                _LOGGER.error("Incorrect JSON Syntax!")
+                pass 
+
             cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
             if 'wallbox_set_current' in msg_json:
                 amps = float(msg_json["wallbox_set_current"])
@@ -1222,8 +1227,8 @@ class ChargePoint(cp):
             await self._connection.close()
         for task in self.tasks:
             task.cancel()
-        asyncio.sleep(30)
-        self.reconnect(self._connection)
+        await asyncio.sleep(30)
+        await self.reconnect(self._connection)
 
     async def reconnect(self, connection: websockets.server.WebSocketServerProtocol):
         """Reconnect charge point."""
