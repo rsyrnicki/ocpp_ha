@@ -372,28 +372,28 @@ class CentralSystem:
         """Return last known value for given measurand."""
         if cp_id in self.charge_points:
             return self.charge_points[cp_id]._metrics[measurand].value
-        _LOGGER.warning("[get_metric] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
+        #_LOGGER.warning("[get_metric] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
         return None
 
     def get_unit(self, cp_id: str, measurand: str):
         """Return unit of given measurand."""
         if cp_id in self.charge_points:
             return self.charge_points[cp_id]._metrics[measurand].unit
-        _LOGGER.warning("[get_unit] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
+        #_LOGGER.warning("[get_unit] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
         return None
 
     def get_ha_unit(self, cp_id: str, measurand: str):
         """Return home assistant unit of given measurand."""
         if cp_id in self.charge_points:
             return self.charge_points[cp_id]._metrics[measurand].ha_unit
-        _LOGGER.warning("[get_unit] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
+        #_LOGGER.warning("[get_unit] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
         return None
 
     def get_extra_attr(self, cp_id: str, measurand: str):
         """Return last known extra attributes for given measurand."""
         if cp_id in self.charge_points:
             return self.charge_points[cp_id]._metrics[measurand].extra_attr
-        _LOGGER.warning("[get_extra_attr] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
+        #_LOGGER.warning("[get_extra_attr] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
         return None
 
     def get_available(self, cp_id: str):
@@ -407,14 +407,14 @@ class CentralSystem:
         """Return what profiles the charger supports."""
         if cp_id in self.charge_points:
             return self.charge_points[cp_id].supported_features
-        _LOGGER.warning("[get_supported_features] cp_id %s not found in the charge_points dict", cp_id)
+        #_LOGGER.warning("[get_supported_features] cp_id %s not found in the charge_points dict", cp_id)
         return 0
     
 
     def find_cp_id_by_serial(self, serial):
         for index, value in self.charge_points.items():
-            _LOGGER.info("id: %s_____________value: %s<", index, str(value.serial))
-            _LOGGER.info("ID: %s_____________serial: %s<", value._metrics["ID"].value, serial)
+            #_LOGGER.info("id: %s_____________value: %s<", index, str(value.serial))
+            #_LOGGER.info("ID: %s_____________serial: %s<", value._metrics["ID"].value, serial)
             if str(value.serial) == str(serial) or str(value._metrics["ID"].value) == str(serial):
                 return index
         return False
@@ -511,6 +511,7 @@ class ChargePoint(cp):
         self._metrics[csess.meter_start.value].unit = UnitOfMeasure.kwh.value
         self._attr_supported_features: int = 0
         self._metrics[cstat.reconnects.value].value: int = 0
+        self.mqtt_metrics = OrderedDict()
 
         # Added
         self.allowed_tags = ["04E2BD1AAE4880"]
@@ -1137,6 +1138,7 @@ class ChargePoint(cp):
                         metrics[index] = value._value
                 except TypeError:
                     pass
+            metrics["phase_info"] = self.mqtt_metrics
             payload = json.dumps(metrics)
             topic = f"{MQTT_TOPIC_PREFIX}/WallboxMetrics/{self.serial}"
             self.mqtt_client.publish(topic, payload, True)
@@ -1215,6 +1217,8 @@ class ChargePoint(cp):
             await self._connection.close()
         for task in self.tasks:
             task.cancel()
+        asyncio.sleep(30)
+        self.reconnect(self._connection)
 
     async def reconnect(self, connection: websockets.server.WebSocketServerProtocol):
         """Reconnect charge point."""
@@ -1329,6 +1333,7 @@ class ChargePoint(cp):
                     metric_value,
                     metric_unit,
                 )
+                self.mqtt_metrics[metric] = phase_info
                 if metric_unit == DEFAULT_POWER_UNIT:
                     self._metrics[metric].value = float(metric_value) / 1000
                     self._metrics[metric].unit = HA_POWER_UNIT
