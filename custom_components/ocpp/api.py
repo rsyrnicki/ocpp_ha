@@ -269,6 +269,11 @@ class CentralSystem:
             try:
                 client.reconnect()
                 _LOGGER.info("Reconnected successfully!")
+                for cp_id, cp in self.charge_points.items():
+                    serial = cp._metrics["ID"]
+                    self.mqtt_client.on_message = self.mqtt_on_message
+                    _LOGGER.info(f"CentralSystem WallboxControl {MQTT_TOPIC_PREFIX}WallboxControl/%s", serial)
+                    self.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}/WallboxControl/{serial}")
                 return
             except Exception as err:
                 _LOGGER.error("%s. Reconnect failed. Retrying...", err)
