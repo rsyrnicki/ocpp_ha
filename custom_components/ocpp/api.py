@@ -370,6 +370,8 @@ class CentralSystem:
             charge_point = ChargePoint(cp_id, websocket, self.hass, self.entry, self)
             self.charge_points[self.cpid] = charge_point
             await charge_point.start()
+            _LOGGER.info('SUBSCRIBE TO: %s/WallboxControl/%s', MQTT_TOPIC_PREFIX, charge_point.serial)
+            self.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}/WallboxControl/{charge_point.serial}")
         else:
             _LOGGER.info(f"Charger {cp_id} reconnected to {self.host}:{self.port}.")
             charge_point: ChargePoint = self.charge_points[self.cpid]
@@ -1285,7 +1287,7 @@ class ChargePoint(cp):
         self.serial = serial
         self.allowed_tags.append(self.serial)
         _LOGGER.info("SERIAL: %s", self.serial)
-        # self.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}WallboxControl/{serial}")
+        #self.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}WallboxControl/{serial}")
         self.central.reconnect_mqtt(self.serial)
         if serial is not None:
             identifiers.add((DOMAIN, serial))
