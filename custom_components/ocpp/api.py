@@ -670,6 +670,7 @@ class ChargePoint(cp):
                 return
             url = call.data.get("upload_url")
             await self.get_diagnostics(url)
+            self.publish_metrics()
 
         async def handle_data_transfer(call):
             """Handle the data transfer service call."""
@@ -680,6 +681,7 @@ class ChargePoint(cp):
             message = call.data.get("message_id", "")
             data = call.data.get("data", "")
             await self.data_transfer(vendor, message, data)
+            self.publish_metrics()
 
         try:
             self.status = STATE_OK
@@ -754,6 +756,7 @@ class ChargePoint(cp):
                 await self.trigger_status_notification()
         except (NotImplementedError) as e:
             _LOGGER.error("Configuration of the charger failed: %s", e)
+        self.publish_metrics()
 
     async def get_supported_features(self):
         """Get supported features."""
@@ -804,6 +807,7 @@ class ChargePoint(cp):
             self.triggered_boot_notification = False
             _LOGGER.warning("Failed with response: %s", resp.status)
             return False
+        self.publish_metrics()
 
     async def trigger_status_notification(self):
         """Trigger status notifications for all connectors."""
@@ -897,6 +901,7 @@ class ChargePoint(cp):
                 },
             )
             resp = await self.call(req)
+            self.publish_metrics()
             if resp.status == ChargingProfileStatus.accepted:
                 return True
             else:
@@ -905,6 +910,21 @@ class ChargePoint(cp):
                     f"Warning: Set charging profile failed with response {resp.status}"
                 )
                 return False
+            
+    def publish_metrics(self):
+        metrics = {"wallbox_id": self.serial}
+        for index, value in self._metrics.items():
+            try:
+                # If value is not JSON serializable, TypeError will be thrown. 
+                test = json.dumps({"test": value._value})
+                if str(value._value).lower() != "unavailable":
+                    metrics[index] = value._value
+            except TypeError:
+                pass
+        metrics["phase_info"] = self.mqtt_metrics
+        payload = json.dumps(metrics)
+        topic = f"{MQTT_TOPIC_PREFIX}/WallboxMetrics/{self.serial}"
+        self.mqtt_client.publish(topic, payload, True)
 
     async def set_availability(self, state: bool = True):
         """Change availability."""
@@ -916,6 +936,7 @@ class ChargePoint(cp):
 
         req = call.ChangeAvailabilityPayload(connector_id=0, type=typ)
         resp = await self.call(req)
+        self.publish_metrics()
         if resp.status == AvailabilityStatus.accepted:
             return True
         else:
@@ -938,6 +959,7 @@ class ChargePoint(cp):
             connector_id=1, id_tag=self._metrics[cdet.identifier.value].value[:20]
         )
         resp = await self.call(req)
+        self.publish_metrics()
         if resp.status == RemoteStartStopStatus.accepted:
             return True
         else:
@@ -959,6 +981,7 @@ class ChargePoint(cp):
         req = call.RemoteStopTransactionPayload(
             transaction_id=self.active_transaction_id
         )
+        self.publish_metrics()
         resp = await self.call(req)
         if resp.status == RemoteStartStopStatus.accepted:
             return True
@@ -974,6 +997,7 @@ class ChargePoint(cp):
         self._metrics[cstat.reconnects.value].value = 0
         req = call.ResetPayload(typ)
         resp = await self.call(req)
+        self.publish_metrics()
         if resp.status == ResetStatus.accepted:
             return True
         else:
@@ -985,6 +1009,7 @@ class ChargePoint(cp):
         """Unlock charger if requested."""
         req = call.UnlockConnectorPayload(connector_id)
         resp = await self.call(req)
+        self.publish_metrics()
         if resp.status == UnlockStatus.unlocked:
             return True
         else:
@@ -1034,6 +1059,7 @@ class ChargePoint(cp):
         req = call.DataTransferPayload(
             vendor_id=vendor_id, message_id=message_id, data=data
         )
+        self.publish_metrics()
         resp = await self.call(req)
         if resp.status == DataTransferStatus.accepted:
             _LOGGER.info(
