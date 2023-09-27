@@ -196,7 +196,6 @@ class CentralSystem:
         self.mqtt_server = MQTT_SERVER
         self.mqtt_port = MQTT_PORT
         self.mqtt_client = pahomqtt.Client(client_id="WBCS_testpi_")
-        self.mqtt_client._connect_timeout = 10.0
         self.mqtt_keepalive = True
         self.mqtt_client.on_connect = self.mqtt_on_connect
         self.mqtt_client.on_disconnect = self.mqtt_on_disconnect
@@ -552,7 +551,6 @@ class ChargePoint(cp):
         self.mqtt_port = MQTT_PORT
         # TODO find unique client ID for every ChargePoint
         self.mqtt_client = pahomqtt.Client(client_id="WBCP_testpi_")
-        self.mqtt_client._connect_timeout = 10.0
         self.mqtt_keepalive = True
         self.mqtt_client.on_connect = self.mqtt_on_connect
         self.mqtt_client.on_disconnect = self.mqtt_on_disconnect
