@@ -155,14 +155,15 @@ async def async_mqtt_on_message(self, client, userdata, msg):
                 msg_json = json.loads(msg.payload.decode())
             except json.decoder.JSONDecodeError:
                 _LOGGER.error("Incorrect JSON Syntax!")
+                return 1
 
             cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
             if 'wallbox_set_current' in msg_json:
                 amps = float(msg_json["wallbox_set_current"])
                 resp = await self.set_max_charge_rate_amps(cp_id, value=amps)
-                self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
+                # self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
                 _LOGGER.info("Set current to %sA", amps)
-                # _LOGGER.info("Response %s", resp)
+                _LOGGER.info("Response %s", resp)
             if 'wallbox_set_state' in msg_json:
                 state = msg_json["wallbox_set_state"]
                 # resp1, resp2 = "", ""
@@ -188,9 +189,9 @@ async def async_mqtt_on_message(self, client, userdata, msg):
                 if state == 'unlock':
                     #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True))
                     resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
-                #_LOGGER.info("Set state to %s", state)
-                #_LOGGER.info("Responce 1: %s", resp1)
-                #_LOGGER.info("Responce 2: %s", resp2)
+                _LOGGER.info("Set state to %s", state)
+                _LOGGER.info("Responce 1: %s", resp1)
+                _LOGGER.info("Responce 2: %s", resp2)
 
 
 class CentralSystem:
