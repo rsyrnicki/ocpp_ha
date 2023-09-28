@@ -11,6 +11,7 @@ import ssl
 import time
 import json
 import paho.mqtt.client as pahomqtt
+from random import randint
 
 from homeassistant.components.persistent_notification import DOMAIN as PN_DOMAIN
 from homeassistant.config_entries import ConfigEntry
@@ -240,7 +241,7 @@ class CentralSystem:
         self.mqtt_password = MQTT_PASSWORD
         self.mqtt_server = MQTT_SERVER
         self.mqtt_port = MQTT_PORT
-        self.mqtt_client = pahomqtt.Client(client_id="WBCS_testpi_")
+        self.mqtt_client = pahomqtt.Client(client_id=f"WBCS_testpi_{randint(0, 9999)}")
         self.mqtt_keepalive = 30
         self.mqtt_client.on_connect = self.mqtt_on_connect
         self.mqtt_client.on_disconnect = self.mqtt_on_disconnect
@@ -554,7 +555,7 @@ class ChargePoint(cp):
         self.mqtt_server = MQTT_SERVER
         self.mqtt_port = MQTT_PORT
         # TODO find unique client ID for every ChargePoint
-        self.mqtt_client = pahomqtt.Client(client_id="WBCP_testpi_")
+        self.mqtt_client = pahomqtt.Client(client_id=f"WBCP_testpi_{randint(0, 9999)}")
         self.mqtt_keepalive = 30
         self.mqtt_client.on_connect = self.mqtt_on_connect
         self.mqtt_client.on_disconnect = self.mqtt_on_disconnect
@@ -592,8 +593,8 @@ class ChargePoint(cp):
                 payload = json.dumps(payload)
                 topic = f"{MQTT_TOPIC_PREFIX}/WallboxInfo/0000"
                 self.mqtt_client.publish(topic, payload, True)
-            except Exception as ee:
-                _LOGGER.info("[OCPP MQTT Client start] Exception in OnStart: %s", str(ee))
+            except Exception as exc:
+                _LOGGER.info("[OCPP MQTT Client start] Exception in OnStart: %s", str(exc))
                 self.connected_flag = False
                 return
 
