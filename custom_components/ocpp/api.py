@@ -160,41 +160,41 @@ async def async_mqtt_on_message(self, client, userdata, msg):
             cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
             if 'wallbox_set_current' in msg_json:
                 amps = float(msg_json["wallbox_set_current"])
-                resp = await self.set_max_charge_rate_amps(cp_id, value=amps)
-                # self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
+                #resp = await self.set_max_charge_rate_amps(cp_id, value=amps)
+                self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
                 _LOGGER.info("Set current to %sA", amps)
-                _LOGGER.info("Response %s", resp)
+                #_LOGGER.info("Response %s", resp)
             if 'wallbox_set_state' in msg_json:
                 state = msg_json["wallbox_set_state"]
-                resp1, resp2 = "", ""
+                #resp1, resp2 = "", ""
                 if state == 'off':
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False))
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False))
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
                     #resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
-                    await asyncio.sleep(3)
-                    resp2 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
+                    #await asyncio.sleep(3)
+                    #resp2 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
                 if state == 'active':
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name))
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name))
                     
                     #resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                    await asyncio.sleep(3)
-                    resp2 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
+                    #await asyncio.sleep(3)
+                    #resp2 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
                 if state == 'standby':
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
                     #resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                    await asyncio.sleep(3)
-                    resp2 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
+                    #await asyncio.sleep(3)
+                    #resp2 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
                 if state == 'reset':
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True))
-                    resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True))
+                    #resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
                 if state == 'unlock':
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True))
-                    resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
+                    self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True))
+                    #resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
                 _LOGGER.info("Set state to %s", state)
-                _LOGGER.info("Response 1: %s", resp1)
-                _LOGGER.info("Response 2: %s", resp2)
+                #_LOGGER.info("Response 1: %s", resp1)
+                #_LOGGER.info("Response 2: %s", resp2)
 
 
 class CentralSystem:
