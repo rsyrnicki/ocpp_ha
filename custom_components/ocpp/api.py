@@ -52,7 +52,7 @@ from ocpp.v16.enums import (
     UnlockStatus,
 )
 
-from .auth_data import MQTT_USER, MQTT_PASSWORD, MQTT_SERVER, MQTT_PORT, MQTT_TOPIC_PREFIX
+from .auth_data import MQTT_USER, MQTT_PASSWORD, MQTT_SERVER, MQTT_PORT, MQTT_TOPIC_PREFIX, ALLOWED_TAGS
 
 from .const import (
     CONF_AUTH_LIST,
@@ -551,7 +551,8 @@ class ChargePoint(cp):
         self.mqtt_metrics = OrderedDict()
 
         # Added
-        self.allowed_tags = ["04E2BD1AAE4880"]
+        # self.allowed_tags = ["04E2BD1AAE4880"]
+        self.allowed_tags = ALLOWED_TAGS
         self.serial = ''
         # MQTT Client
         self.mqtt_user = MQTT_USER
