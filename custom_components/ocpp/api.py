@@ -436,6 +436,7 @@ class CentralSystem:
         if cp_id in self.charge_points:
             return self.charge_points[cp_id].status == STATE_OK
         _LOGGER.warning("[get_available] cp_id %s not found in the charge_points dict", cp_id)
+        _LOGGER.warning("Wallbox status: %s", self.charge_points[cp_id].status)
         return False
 
     def get_supported_features(self, cp_id: str):
