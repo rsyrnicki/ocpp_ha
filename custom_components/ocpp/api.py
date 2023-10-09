@@ -434,7 +434,7 @@ class CentralSystem:
     def get_available(self, cp_id: str):
         """Return whether the charger is available."""
         if cp_id in self.charge_points:
-            _LOGGER.info("Wallbox status: %s", self.charge_points[cp_id].status)
+            # _LOGGER.info("Wallbox status: %s", self.charge_points[cp_id].status)
             return self.charge_points[cp_id].status == STATE_OK
         _LOGGER.warning("[get_available] cp_id %s not found in the charge_points dict", cp_id)
         _LOGGER.warning("charge_points: %s", str(self.charge_points))
@@ -736,7 +736,7 @@ class ChargePoint(cp):
             #                "StopTxnSampledData", ",".join(self.entry.data[CONF_MONITORED_VARIABLES])
             #            )
             #            await self.start_transaction()
-
+            await self.configure(ckey.heartbeat_interval.value, "30")
             # Register custom services with home assistant
             self.hass.services.async_register(
                 DOMAIN,
@@ -780,13 +780,14 @@ class ChargePoint(cp):
             # and can cause issues with some chargers
             await self.configure(ckey.web_socket_ping_interval.value, "60")
             await self.set_availability()
+            self.publish_metrics()
             if prof.REM in self._attr_supported_features:
                 if self.received_boot_notification is False:
                     await self.trigger_boot_notification()
                 await self.trigger_status_notification()
         except (NotImplementedError) as e:
             _LOGGER.error("Configuration of the charger failed: %s", e)
-        self.publish_metrics()
+        
 
     async def get_supported_features(self):
         """Get supported features."""
@@ -835,12 +836,12 @@ class ChargePoint(cp):
         resp = await self.call(req)
         if resp.status == TriggerMessageStatus.accepted:
             self.triggered_boot_notification = True
+            self.publish_metrics()
             return True
         else:
             self.triggered_boot_notification = False
             _LOGGER.warning("Failed with response: %s", resp.status)
             return False
-        self.publish_metrics()
 
     async def trigger_status_notification(self):
         """Trigger status notifications for all connectors."""
@@ -1235,6 +1236,8 @@ class ChargePoint(cp):
                 self._metrics[cstat.latency_ping.value].value = latency_ping
                 self._metrics[cstat.latency_pong.value].value = latency_pong
 
+                self.publish_metrics()
+
             except asyncio.TimeoutError as timeout_exception:
                 _LOGGER.debug(
                     f"Connection latency from '{self.central.csid}' to '{self.id}': ping={latency_ping} ms, pong={latency_pong} ms",
@@ -1283,6 +1286,7 @@ class ChargePoint(cp):
     async def stop(self):
         """Close connection and cancel ongoing tasks."""
         self.status = STATE_UNAVAILABLE
+        self.publish_metrics()
         if self._connection.open:
             _LOGGER.debug(f"Closing websocket to '{self.id}'")
             await self._connection.close()
