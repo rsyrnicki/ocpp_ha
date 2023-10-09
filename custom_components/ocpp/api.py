@@ -737,6 +737,8 @@ class ChargePoint(cp):
             #            )
             #            await self.start_transaction()
             await self.configure(ckey.heartbeat_interval.value, "30")
+            await self.configure(ckey.meter_value_sample_interval.value, "10")
+            
             # Register custom services with home assistant
             self.hass.services.async_register(
                 DOMAIN,
@@ -1495,6 +1497,7 @@ class ChargePoint(cp):
                 self._metrics[csess.session_energy.value].extra_attr[
                     cstat.id_tag.name
                 ] = self._metrics[cstat.id_tag.value].value
+        self.publish_metrics()
         self.hass.async_create_task(self.central.update(self.central.cpid))
         return call_result.MeterValuesPayload()
 
@@ -1721,6 +1724,7 @@ class ChargePoint(cp):
         """Handle a Heartbeat."""
         now = datetime.now(tz=timezone.utc)
         self._metrics[cstat.heartbeat.value].value = now
+        self.publish_metrics()
         self.hass.async_create_task(self.central.update(self.central.cpid))
         return call_result.HeartbeatPayload(
             current_time=now.strftime("%Y-%m-%dT%H:%M:%SZ")
