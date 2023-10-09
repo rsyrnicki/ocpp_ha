@@ -524,7 +524,7 @@ class ChargePoint(cp):
         skip_schema_validation: bool = False,
     ):
         """Instantiate a ChargePoint."""
-
+        _LOGGER.info("Instantiate charger %s", id)
         super().__init__(id, connection)
 
         for action in self.route_map:
@@ -792,7 +792,10 @@ class ChargePoint(cp):
         """Get supported features."""
         req = call.GetConfigurationPayload(key=[ckey.supported_feature_profiles.value])
         resp = await self.call(req)
-        feature_list = (resp.configuration_key[0][om.value.value]).split(",")
+        if resp.configuration_key != []:
+            feature_list = (resp.configuration_key[0][om.value.value]).split(",")
+        else:
+            feature_list = []
         if feature_list[0] == "":
             _LOGGER.warning("No feature profiles detected, defaulting to Core")
             await self.notify_ha("No feature profiles detected, defaulting to Core")
