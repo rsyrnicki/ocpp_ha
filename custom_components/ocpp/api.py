@@ -795,7 +795,7 @@ class ChargePoint(cp):
         if resp.configuration_key != []:
             feature_list = (resp.configuration_key[0][om.value.value]).split(",")
         else:
-            feature_list = []
+            feature_list = [""]
         if feature_list[0] == "":
             _LOGGER.warning("No feature profiles detected, defaulting to Core")
             await self.notify_ha("No feature profiles detected, defaulting to Core")
