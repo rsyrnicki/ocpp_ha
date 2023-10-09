@@ -737,7 +737,6 @@ class ChargePoint(cp):
             #            )
             #            await self.start_transaction()
             await self.configure(ckey.heartbeat_interval.value, "30")
-            await self.configure(ckey.meter_value_sample_interval.value, "10")
             
             # Register custom services with home assistant
             self.hass.services.async_register(
@@ -1458,8 +1457,12 @@ class ChargePoint(cp):
                             self._metrics[measurand].value = float(value) / 1000
                             self._metrics[measurand].unit = HA_ENERGY_UNIT
                     else:
-                        self._metrics[measurand].value = float(value)
-                        self._metrics[measurand].unit = unit
+                        try:
+                            self._metrics[measurand].value = float(value)
+                            self._metrics[measurand].unit = unit
+                        except ValueError:
+                            self._metrics[measurand].value = value
+                            self._metrics[measurand].unit = unit
                     if location is not None:
                         self._metrics[measurand].extra_attr[
                             om.location.value
