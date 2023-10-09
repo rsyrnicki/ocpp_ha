@@ -794,6 +794,7 @@ class ChargePoint(cp):
         """Get supported features."""
         req = call.GetConfigurationPayload(key=[ckey.supported_feature_profiles.value])
         resp = await self.call(req)
+        _LOGGER.info(f"supported features: {resp}")
         if resp.configuration_key != []:
             feature_list = (resp.configuration_key[0][om.value.value]).split(",")
         else:
