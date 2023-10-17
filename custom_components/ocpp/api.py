@@ -52,7 +52,8 @@ from ocpp.v16.enums import (
     UnlockStatus,
 )
 
-from .auth_data import MQTT_USER, MQTT_PASSWORD, MQTT_SERVER, MQTT_PORT, MQTT_TOPIC_PREFIX, ALLOWED_TAGS
+from .auth_data import (MQTT_USER, MQTT_PASSWORD, MQTT_SERVER, MQTT_PORT, MQTT_TOPIC_PREFIX, 
+                        ALLOWED_TAGS, WALLBOX_TYPE)
 
 from .const import (
     CONF_AUTH_LIST,
@@ -160,41 +161,24 @@ async def async_mqtt_on_message(self, client, userdata, msg):
             cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
             if 'wallbox_set_current' in msg_json:
                 amps = float(msg_json["wallbox_set_current"])
-                #resp = await self.set_max_charge_rate_amps(cp_id, value=amps)
                 self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
                 _LOGGER.info("Set current to %sA", amps)
-                #_LOGGER.info("Response %s", resp)
             if 'wallbox_set_state' in msg_json:
                 state = msg_json["wallbox_set_state"]
-                #resp1, resp2 = "", ""
                 if state == 'off':
                     self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False))
                     self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
-                    #resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
-                    #await asyncio.sleep(3)
-                    #resp2 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
                 if state == 'active':
                     self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
                     self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name))
-                    
-                    #resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                    #await asyncio.sleep(3)
-                    #resp2 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
                 if state == 'standby':
                     self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
                     self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
-                    #resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                    #await asyncio.sleep(3)
-                    #resp2 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
                 if state == 'reset':
                     self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True))
-                    #resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
                 if state == 'unlock':
                     self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True))
-                    #resp1 = await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
                 _LOGGER.info("Set state to %s", state)
-                #_LOGGER.info("Response 1: %s", resp1)
-                #_LOGGER.info("Response 2: %s", resp2)
 
 
 class CentralSystem:
@@ -876,7 +860,9 @@ class ChargePoint(cp):
 
     async def set_charge_rate(self, limit_amps: int = 32, limit_watts: int = 22000):
         """Set a charging profile with defined limit."""
-        if prof.SMART in self._attr_supported_features:
+        if WALLBOX_TYPE == 'ABL':
+            await self.data_transfer('ABL', 'SetLimit', f'logicalid=1/ProductLimit;value={limit_amps}')
+        elif prof.SMART in self._attr_supported_features:
             resp = await self.get_configuration(
                 ckey.charging_schedule_allowed_charging_rate_unit.value
             )
@@ -988,9 +974,13 @@ class ChargePoint(cp):
 
         Check if authorisation enabled, if it is disable it before remote start
         """
-        resp = await self.get_configuration(ckey.authorize_remote_tx_requests.value)
-        if resp is True:
-            await self.configure(ckey.authorize_remote_tx_requests.value, "false")
+        if WALLBOX_TYPE != 'ABL':
+            resp = await self.get_configuration(ckey.authorize_remote_tx_requests.value)
+            if resp is True:
+                await self.configure(ckey.authorize_remote_tx_requests.value, "false")
+        else: 
+            await self.configure('FreeCharging', "true")
+            await self.configure('FreeChargingOffline', "true")
         req = call.RemoteStartTransactionPayload(
             connector_id=1, id_tag=self._metrics[cdet.identifier.value].value[:20]
         )
@@ -1017,6 +1007,9 @@ class ChargePoint(cp):
         req = call.RemoteStopTransactionPayload(
             transaction_id=self.active_transaction_id
         )
+        if WALLBOX_TYPE == 'ABL':
+            await self.configure('FreeCharging', "false")
+            await self.configure('FreeChargingOffline', "false")
         self.publish_metrics()
         resp = await self.call(req)
         if resp.status == RemoteStartStopStatus.accepted:
