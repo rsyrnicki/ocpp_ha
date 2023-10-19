@@ -53,7 +53,7 @@ from ocpp.v16.enums import (
 )
 
 from .auth_data import (MQTT_USER, MQTT_PASSWORD, MQTT_SERVER, MQTT_PORT, MQTT_TOPIC_PREFIX, 
-                        ALLOWED_TAGS, WALLBOX_TYPE)
+                        ALLOWED_TAGS, WALLBOX_TYPE, LIMITER)
 
 from .const import (
     CONF_AUTH_LIST,
@@ -861,7 +861,7 @@ class ChargePoint(cp):
     async def set_charge_rate(self, limit_amps: int = 32, limit_watts: int = 22000):
         """Set a charging profile with defined limit."""
         if WALLBOX_TYPE == 'ABL':
-            await self.data_transfer('ABL', 'SetLimit', f'logicalid=1/ProductLimit;value={limit_amps}')
+            await self.data_transfer('ABL', 'SetLimit', f'logicalid={LIMITER};value={limit_amps}')
         elif prof.SMART in self._attr_supported_features:
             resp = await self.get_configuration(
                 ckey.charging_schedule_allowed_charging_rate_unit.value
