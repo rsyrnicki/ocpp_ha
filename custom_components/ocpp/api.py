@@ -861,7 +861,8 @@ class ChargePoint(cp):
     async def set_charge_rate(self, limit_amps: int = 32, limit_watts: int = 22000):
         """Set a charging profile with defined limit."""
         if WALLBOX_TYPE == 'ABL':
-            await self.data_transfer('ABL', 'SetLimit', f'logicalid={LIMITER};value={limit_amps}')
+            for l in LIMITER:
+                await self.data_transfer('ABL', 'SetLimit', f'logicalid={l};value={limit_amps}')
         elif prof.SMART in self._attr_supported_features:
             resp = await self.get_configuration(
                 ckey.charging_schedule_allowed_charging_rate_unit.value
