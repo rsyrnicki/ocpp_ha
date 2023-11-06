@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections import defaultdict
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
@@ -151,43 +152,44 @@ TRANS_SERVICE_DATA_SCHEMA = vol.Schema(
 
 async def async_mqtt_on_message(self, client, userdata, msg):
     async with self.mqtt_lock:
-        if "WallboxControl" in msg.topic:
-            try:
-                msg_json = json.loads(msg.payload.decode())
-            except json.decoder.JSONDecodeError:
-                _LOGGER.error("Incorrect JSON Syntax!")
-                return 1
+        with self.mqtt_thread_lock:
+            if "WallboxControl" in msg.topic:
+                try:
+                    msg_json = json.loads(msg.payload.decode())
+                except json.decoder.JSONDecodeError:
+                    _LOGGER.error("Incorrect JSON Syntax!")
+                    return 1
 
-            cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
-            if 'wallbox_set_current' in msg_json:
-                amps = float(msg_json["wallbox_set_current"])
-                # self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
-                asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps)).result()
-                _LOGGER.info("Set current to %sA", amps)
-            if 'wallbox_set_state' in msg_json:
-                state = msg_json["wallbox_set_state"]
-                if state == 'off':
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False))
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
-                    asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)).result()
-                    asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)).result()
-                if state == 'active':
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name))
-                    asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)).result()
-                    asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)).result()
-                if state == 'standby':
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
-                    asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)).result()
-                    asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)).result()
-                if state == 'reset':
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True))
-                    asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)).result()
-                if state == 'unlock':
-                    #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True))
-                    asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)).result()
-                _LOGGER.info("Set state to %s", state)
+                cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
+                if 'wallbox_set_current' in msg_json:
+                    amps = float(msg_json["wallbox_set_current"])
+                    # self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
+                    asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
+                    _LOGGER.info("Set current to %sA", amps)
+                if 'wallbox_set_state' in msg_json:
+                    state = msg_json["wallbox_set_state"]
+                    if state == 'off':
+                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False))
+                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
+                        asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False), self.hass.loop).result()
+                        asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name), self.hass.loop).result()
+                    if state == 'active':
+                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
+                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name))
+                        asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True), self.hass.loop).result()
+                        asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name), self.hass.loop).result()
+                    if state == 'standby':
+                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
+                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
+                        asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True), self.hass.loop).result()
+                        asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name), self.hass.loop).result()
+                    if state == 'reset':
+                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True))
+                        asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True), self.hass.loop).result()
+                    if state == 'unlock':
+                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True))
+                        asyncio.run_coroutine_threadsafe(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True), self.hass.loop).result()
+                    _LOGGER.info("Set state to %s", state)
 
 
 class CentralSystem:
@@ -245,6 +247,7 @@ class CentralSystem:
         self.connected_flag = False
         self.mqtt_client.on_message = self.mqtt_on_message
         self.mqtt_lock = asyncio.Lock()
+        self.mqtt_thread_lock = threading.Lock()
 
         if self.mqtt_port != 1883:
             _LOGGER.info('[OCPP MQTT Client start] mqtt: tls_set...')
