@@ -474,7 +474,7 @@ class CentralSystem:
         self, cp_id: str, service_name: str, state: bool = True
     ):
         """Carry out requested service/state change on connected charger."""
-        await asyncio.sleep(5)
+        # await asyncio.sleep(2)
         resp = False
         if cp_id in self.charge_points:
             if service_name == csvcs.service_availability.name:
