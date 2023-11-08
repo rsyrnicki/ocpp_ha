@@ -464,7 +464,7 @@ class CentralSystem:
 
     async def set_max_charge_rate_amps(self, cp_id: str, value: float):
         """Set the maximum charge rate in amps."""
-        await asyncio.sleep(5)
+        # await asyncio.sleep(5)
         if cp_id in self.charge_points:
             return await self.charge_points[cp_id].set_charge_rate(limit_amps=value)
         _LOGGER.warning("[set_max_charge_rate_amps]cp_id %s not found in the charge_points dict", cp_id)
@@ -972,7 +972,7 @@ class ChargePoint(cp):
 
     async def set_availability(self, state: bool = True):
         """Change availability."""
-        await asyncio.sleep(5)
+        # await asyncio.sleep(5)
         if state is True:
             typ = AvailabilityType.operative.value
         else:
