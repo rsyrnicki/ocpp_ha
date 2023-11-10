@@ -13,6 +13,7 @@ import time
 import json
 import paho.mqtt.client as pahomqtt
 from random import randint
+import time 
 
 from homeassistant.components.persistent_notification import DOMAIN as PN_DOMAIN
 from homeassistant.config_entries import ConfigEntry
@@ -116,8 +117,8 @@ from .enums import (
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 logging.getLogger(DOMAIN).setLevel(logging.INFO)
 # Uncomment these when Debugging
-# logging.getLogger("asyncio").setLevel(logging.DEBUG)
-# logging.getLogger("websockets").setLevel(logging.DEBUG)
+logging.getLogger("asyncio").setLevel(logging.DEBUG)
+logging.getLogger("websockets").setLevel(logging.DEBUG)
 
 UFW_SERVICE_DATA_SCHEMA = vol.Schema(
     {
@@ -151,6 +152,11 @@ TRANS_SERVICE_DATA_SCHEMA = vol.Schema(
 
 
 async def async_mqtt_on_message(self, client, userdata, msg):
+    if self.busy and time.time() - self.mqtt_timeout_timer > 60:
+        return
+    else:
+        self.busy = True
+        self.mqtt_timeout_timer = time.time()
     async with self.mqtt_lock:
         with self.mqtt_thread_lock:
             if "WallboxControl" in msg.topic:
@@ -257,6 +263,10 @@ class CentralSystem:
         self.mqtt_client.on_message = self.mqtt_on_message
         self.mqtt_lock = asyncio.Lock()
         self.mqtt_thread_lock = threading.Lock()
+        
+        #Set to True if the wallbox is still working on a MQTT Message
+        self.busy = False
+        self.mqtt_timeout_timer = 0
 
         if self.mqtt_port != 1883:
             _LOGGER.info('[OCPP MQTT Client start] mqtt: tls_set...')
@@ -922,6 +932,9 @@ class ChargePoint(cp):
             _LOGGER.info("Smart charging is not supported by this charger")
             return False
         resp = await self.call(req)
+        self.central.busy = False
+        self.mqtt_timeout_timer = time.time()
+        _LOGGER.debug("Set limit call recieved. Allowing new MQTT Messages from now on.")
         if resp.status == ChargingProfileStatus.accepted:
             return True
         else:
@@ -1007,6 +1020,9 @@ class ChargePoint(cp):
             connector_id=1, id_tag=self._metrics[cdet.identifier.value].value[:20]
         )
         resp = await self.call(req)
+        self.central.busy = False
+        self.mqtt_timeout_timer = time.time()
+        _LOGGER.debug("Set limit call recieved. Allowing new MQTT Messages from now on.")
         self.publish_metrics()
         if resp.status == RemoteStartStopStatus.accepted:
             return True
@@ -1034,6 +1050,9 @@ class ChargePoint(cp):
             await self.configure('FreeChargingOffline', "false")
         self.publish_metrics()
         resp = await self.call(req)
+        self.central.busy = False
+        self.mqtt_timeout_timer = time.time()
+        _LOGGER.debug("Set limit call recieved. Allowing new MQTT Messages from now on.")
         if resp.status == RemoteStartStopStatus.accepted:
             return True
         else:
