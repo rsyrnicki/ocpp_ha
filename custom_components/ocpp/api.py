@@ -152,8 +152,8 @@ TRANS_SERVICE_DATA_SCHEMA = vol.Schema(
 
 
 async def async_mqtt_on_message(self, client, userdata, msg):
-    if self.busy and time.time() - self.mqtt_timeout_timer > 60:
-        return
+    if self.busy and time.time() - self.mqtt_timeout_timer > 20:
+        return 1
     else:
         self.busy = True
         self.mqtt_timeout_timer = time.time()
@@ -1222,8 +1222,11 @@ class ChargePoint(cp):
         # https://github.com/mobilityhouse/ocpp/issues/104.
         # This code 'unsilences' CallErrors by raising them as exception
         # upon receiving.
-        resp = await super()._get_specific_response(unique_id, timeout)
-
+        try:
+            resp = await super()._get_specific_response(unique_id, timeout)
+        except TimeoutError as te:
+            _LOGGER.error("Timeout Error: %s", te)
+            return 0
         if isinstance(resp, CallError):
             raise resp.to_exception()
 
