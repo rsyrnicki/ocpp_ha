@@ -1226,7 +1226,12 @@ class ChargePoint(cp):
             resp = await super()._get_specific_response(unique_id, timeout)
         except TimeoutError as te:
             _LOGGER.error("Timeout Error: %s", te)
-            return 0
+            resp = CallError(
+                unique_id=unique_id,
+                error_code="ProtocolError",
+                error_description="Probably Timeout",
+                error_details="in _get_specific_response()"
+            )
         if isinstance(resp, CallError):
             raise resp.to_exception()
 
