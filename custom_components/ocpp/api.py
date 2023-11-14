@@ -152,13 +152,14 @@ TRANS_SERVICE_DATA_SCHEMA = vol.Schema(
 
 
 async def async_mqtt_on_message(self, client, userdata, msg):
-    if self.busy and time.time() - self.mqtt_timeout_timer > 20:
-        return 1
-    else:
-        self.busy = True
-        self.mqtt_timeout_timer = time.time()
+
     async with self.mqtt_lock:
         with self.mqtt_thread_lock:
+            if self.busy and time.time() - self.mqtt_timeout_timer > 20:
+                return 1
+            else:
+                self.busy = True
+                self.mqtt_timeout_timer = time.time()
             if "WallboxControl" in msg.topic:
                 try:
                     msg_json = json.loads(msg.payload.decode())
@@ -198,6 +199,7 @@ async def async_mqtt_on_message(self, client, userdata, msg):
                     #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
                     #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
                     _LOGGER.info("Set current to %sA", amps)
+            await asyncio.sleep(5)
 
 
 class CentralSystem:
@@ -1225,8 +1227,9 @@ class ChargePoint(cp):
                 error_description="Probably Timeout",
                 error_details="in _get_specific_response()"
             )
-        if isinstance(resp, CallError):
-            raise resp.to_exception()
+        # 14.11.2023 Robert: CallError Silenced, 
+        #if isinstance(resp, CallError):
+        #    raise resp.to_exception()
 
         return resp
 
