@@ -152,14 +152,14 @@ TRANS_SERVICE_DATA_SCHEMA = vol.Schema(
 
 
 async def async_mqtt_on_message(self, client, userdata, msg):
-
+    if self.busy and time.time() - self.mqtt_timeout_timer > 20:
+        return 1
+    else:
+        self.busy = True
+        self.mqtt_timeout_timer = time.time()
     async with self.mqtt_lock:
         with self.mqtt_thread_lock:
-            if self.busy and time.time() - self.mqtt_timeout_timer > 20:
-                return 1
-            else:
-                self.busy = True
-                self.mqtt_timeout_timer = time.time()
+            
             if "WallboxControl" in msg.topic:
                 try:
                     msg_json = json.loads(msg.payload.decode())
@@ -200,6 +200,9 @@ async def async_mqtt_on_message(self, client, userdata, msg):
                     #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
                     _LOGGER.info("Set current to %sA", amps)
             await asyncio.sleep(5)
+            self.central.busy = False
+            self.mqtt_timeout_timer = time.time()
+            _LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
 
 
 class CentralSystem:
@@ -927,9 +930,9 @@ class ChargePoint(cp):
             _LOGGER.info("Smart charging is not supported by this charger")
             return False
         resp = await self.call(req)
-        self.central.busy = False
-        self.mqtt_timeout_timer = time.time()
-        _LOGGER.debug("Set limit call recieved. Allowing new MQTT Messages from now on.")
+        #self.central.busy = False
+        #self.mqtt_timeout_timer = time.time()
+        #_LOGGER.debug("Set limit call recieved. Allowing new MQTT Messages from now on.")
         if resp.status == ChargingProfileStatus.accepted:
             return True
         else:
@@ -1015,9 +1018,9 @@ class ChargePoint(cp):
             connector_id=1, id_tag=self._metrics[cdet.identifier.value].value[:20]
         )
         resp = await self.call(req)
-        self.central.busy = False
-        self.mqtt_timeout_timer = time.time()
-        _LOGGER.debug("Start transaction call recieved. Allowing new MQTT Messages from now on.")
+        #self.central.busy = False
+        #self.mqtt_timeout_timer = time.time()
+        #_LOGGER.debug("Start transaction call recieved. Allowing new MQTT Messages from now on.")
         self.publish_metrics()
         if resp.status == RemoteStartStopStatus.accepted:
             return True
@@ -1045,9 +1048,9 @@ class ChargePoint(cp):
             await self.configure('FreeChargingOffline', "false")
         self.publish_metrics()
         resp = await self.call(req)
-        self.central.busy = False
-        self.mqtt_timeout_timer = time.time()
-        _LOGGER.debug("Stop transaction call recieved. Allowing new MQTT Messages from now on.")
+        #self.central.busy = False
+        #self.mqtt_timeout_timer = time.time()
+        #_LOGGER.debug("Stop transaction call recieved. Allowing new MQTT Messages from now on.")
         if resp.status == RemoteStartStopStatus.accepted:
             return True
         else:
@@ -1227,9 +1230,9 @@ class ChargePoint(cp):
                 error_description="Probably Timeout",
                 error_details="in _get_specific_response()"
             )
-        # 14.11.2023 Robert: CallError Silenced, 
-        #if isinstance(resp, CallError):
-        #    raise resp.to_exception()
+         
+        if isinstance(resp, CallError):
+            raise resp.to_exception()
 
         return resp
 
