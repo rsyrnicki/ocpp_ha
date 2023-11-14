@@ -25,7 +25,7 @@ import voluptuous as vol
 import websockets.connection
 import websockets.server
 
-from ocpp.exceptions import NotImplementedError
+from ocpp.exceptions import NotImplementedError, ProtocolError
 from ocpp.messages import CallError
 from ocpp.routing import on
 from ocpp.v16 import ChargePoint as cp, call, call_result
@@ -159,7 +159,6 @@ async def async_mqtt_on_message(self, client, userdata, msg):
         self.mqtt_timeout_timer = time.time()
     async with self.mqtt_lock:
         with self.mqtt_thread_lock:
-            
             if "WallboxControl" in msg.topic:
                 try:
                     msg_json = json.loads(msg.payload.decode())
@@ -195,14 +194,18 @@ async def async_mqtt_on_message(self, client, userdata, msg):
                     _LOGGER.info("Set state to %s", state)
                 if 'wallbox_set_current' in msg_json:
                     amps = float(msg_json["wallbox_set_current"])
-                    await self.set_max_charge_rate_amps(cp_id, value=amps)
+                    try:
+                        await self.set_max_charge_rate_amps(cp_id, value=amps)
+                    except ProtocolError as pe:
+                        _LOGGER.error(pe)
+                        await asyncio.sleep(20)
                     #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
                     #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
                     _LOGGER.info("Set current to %sA", amps)
-            await asyncio.sleep(5)
-            self.busy = False
-            self.mqtt_timeout_timer = time.time()
-            _LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
+                await asyncio.sleep(5)
+                #self.busy = False
+                #self.mqtt_timeout_timer = time.time()
+                #_LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
 
 
 class CentralSystem:
@@ -1159,6 +1162,9 @@ class ChargePoint(cp):
         if resp.configuration_key is not None:
             value = resp.configuration_key[0][om.value.value]
             _LOGGER.debug("Get Configuration for %s: %s", key, value)
+            self.central.busy = False
+            self.central.mqtt_timeout_timer = time.time()
+            _LOGGER.debug("Configuration read. Allowing new MQTT Messages from now on.")
             self._metrics[cdet.config_response.value].value = datetime.now(
                 tz=timezone.utc
             )
