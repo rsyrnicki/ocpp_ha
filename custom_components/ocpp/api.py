@@ -200,7 +200,7 @@ async def async_mqtt_on_message(self, client, userdata, msg):
                     #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
                     _LOGGER.info("Set current to %sA", amps)
             await asyncio.sleep(5)
-            self.central.busy = False
+            self.busy = False
             self.mqtt_timeout_timer = time.time()
             _LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
 
