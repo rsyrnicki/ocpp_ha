@@ -151,12 +151,12 @@ TRANS_SERVICE_DATA_SCHEMA = vol.Schema(
 )
 
 
-async def async_mqtt_on_message(self, client, userdata, msg):
-    if self.busy and time.time() - self.mqtt_timeout_timer > 20:
-        return 1
-    else:
-        self.busy = True
-        self.mqtt_timeout_timer = time.time()
+async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
+    #if self.busy and time.time() - self.mqtt_timeout_timer > 20:
+    #    return 1
+    #else:
+    #    self.busy = True
+    #    self.mqtt_timeout_timer = time.time()
     async with self.mqtt_lock:
         with self.mqtt_thread_lock:
             if "WallboxControl" in msg.topic:
@@ -166,45 +166,44 @@ async def async_mqtt_on_message(self, client, userdata, msg):
                     _LOGGER.error("Incorrect JSON Syntax!")
                     return 1
                 cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
-                if 'wallbox_set_state' in msg_json:
+                if 'wallbox_set_state' in msg_json and not self.busy_setting_state:
+                    self.busy_setting_state = True
+                    self.mqtt_timeout_timer = time.time()
                     state = msg_json["wallbox_set_state"]
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(2)
                     if state == 'off':
                         #await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
-                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False))
-                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
                     if state == 'active':
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                        await asyncio.sleep(5)
+                        await asyncio.sleep(2)
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
-                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
-                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name))
                     if state == 'standby':
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                        await asyncio.sleep(5)
+                        await asyncio.sleep(2)
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
-                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
-                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
                     if state == 'reset':
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
-                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True))
                     if state == 'unlock':
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
-                        #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True))
                     _LOGGER.info("Set state to %s", state)
-                if 'wallbox_set_current' in msg_json:
+                if 'wallbox_set_current' in msg_json and not self.busy_setting_current:
+                    self.busy_setting_current = True
+                    self.mqtt_timeout_timer = time.time()
                     amps = float(msg_json["wallbox_set_current"])
                     try:
-                        await asyncio.sleep(5)
+                        await asyncio.sleep(2)
                         await self.set_max_charge_rate_amps(cp_id, value=amps)
                     except ProtocolError as pe:
                         _LOGGER.error(pe)
                         await asyncio.sleep(30)
+                        self.busy = False
+                        self.busy_setting_current = False
+                        self.busy_setting_state = False
                     #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
                     #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
                     _LOGGER.info("Set current to %sA", amps)
-                await asyncio.sleep(5)
+                await asyncio.sleep(2)
                 #self.busy = False
                 #self.mqtt_timeout_timer = time.time()
                 #_LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
@@ -269,6 +268,8 @@ class CentralSystem:
         
         #Set to True if the wallbox is still working on a MQTT Message
         self.busy = False
+        self.busy_setting_state = False
+        self.busy_setting_current = False
         self.mqtt_timeout_timer = 0
 
         if self.mqtt_port != 1883:
@@ -935,9 +936,9 @@ class ChargePoint(cp):
             _LOGGER.info("Smart charging is not supported by this charger")
             return False
         resp = await self.call(req)
-        #self.central.busy = False
+        self.central.busy_setting_current = False
         #self.mqtt_timeout_timer = time.time()
-        #_LOGGER.debug("Set limit call recieved. Allowing new MQTT Messages from now on.")
+        _LOGGER.debug("Set limit call recieved. Allowing new MQTT Messages from now on.")
         if resp.status == ChargingProfileStatus.accepted:
             return True
         else:
@@ -1023,9 +1024,9 @@ class ChargePoint(cp):
             connector_id=1, id_tag=self._metrics[cdet.identifier.value].value[:20]
         )
         resp = await self.call(req)
-        #self.central.busy = False
+        self.central.busy_setting_state = False
         #self.mqtt_timeout_timer = time.time()
-        #_LOGGER.debug("Start transaction call recieved. Allowing new MQTT Messages from now on.")
+        _LOGGER.debug("Start transaction call recieved. Allowing new MQTT Messages from now on.")
         self.publish_metrics()
         if resp.status == RemoteStartStopStatus.accepted:
             return True
@@ -1053,9 +1054,9 @@ class ChargePoint(cp):
             await self.configure('FreeChargingOffline', "false")
         self.publish_metrics()
         resp = await self.call(req)
-        #self.central.busy = False
+        self.central.busy_setting_state = False
         #self.mqtt_timeout_timer = time.time()
-        #_LOGGER.debug("Stop transaction call recieved. Allowing new MQTT Messages from now on.")
+        _LOGGER.debug("Stop transaction call recieved. Allowing new MQTT Messages from now on.")
         if resp.status == RemoteStartStopStatus.accepted:
             return True
         else:
