@@ -170,23 +170,32 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
                     self.busy_setting_state = True
                     self.mqtt_timeout_timer = time.time()
                     state = msg_json["wallbox_set_state"]
-                    await asyncio.sleep(2)
-                    if state == 'off':
-                        #await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
-                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
-                    if state == 'active':
-                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
+                    try:
                         await asyncio.sleep(2)
-                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
-                    if state == 'standby':
-                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                        await asyncio.sleep(2)
-                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
-                    if state == 'reset':
-                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
-                    if state == 'unlock':
-                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
-                    _LOGGER.info("Set state to %s", state)
+                        if state == 'off':
+                            #await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
+                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
+                        if state == 'active':
+                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
+                            await asyncio.sleep(2)
+                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
+                        if state == 'standby':
+                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
+                            await asyncio.sleep(2)
+                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
+                        if state == 'reset':
+                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
+                        if state == 'unlock':
+                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
+                        _LOGGER.info("Set state to %s", state)
+                    except ProtocolError as pe:
+                        _LOGGER.error(pe)
+                        await asyncio.sleep(30)
+                        self.busy = False
+                        self.busy_setting_current = False
+                        self.busy_setting_state = False
+                        # Restart backend if lost connection
+                        CentralSystem.create(self.hass, self.entry)
                 if 'wallbox_set_current' in msg_json and not self.busy_setting_current:
                     self.busy_setting_current = True
                     self.mqtt_timeout_timer = time.time()
@@ -200,6 +209,8 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
                         self.busy = False
                         self.busy_setting_current = False
                         self.busy_setting_state = False
+                        # Restart backend if lost connection
+                        CentralSystem.create(self.hass, self.entry)
                     #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
                     #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
                     _LOGGER.info("Set current to %sA", amps)
