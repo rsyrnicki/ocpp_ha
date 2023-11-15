@@ -168,6 +168,7 @@ async def async_mqtt_on_message(self, client, userdata, msg):
                 cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
                 if 'wallbox_set_state' in msg_json:
                     state = msg_json["wallbox_set_state"]
+                    await asyncio.sleep(5)
                     if state == 'off':
                         #await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
@@ -175,13 +176,13 @@ async def async_mqtt_on_message(self, client, userdata, msg):
                         #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
                     if state == 'active':
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(5)
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
                         #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
                         #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name))
                     if state == 'standby':
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(5)
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
                         #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True))
                         #self.hass.async_create_task(self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name))
@@ -195,10 +196,11 @@ async def async_mqtt_on_message(self, client, userdata, msg):
                 if 'wallbox_set_current' in msg_json:
                     amps = float(msg_json["wallbox_set_current"])
                     try:
+                        await asyncio.sleep(5)
                         await self.set_max_charge_rate_amps(cp_id, value=amps)
                     except ProtocolError as pe:
                         _LOGGER.error(pe)
-                        await asyncio.sleep(20)
+                        await asyncio.sleep(30)
                     #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
                     #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
                     _LOGGER.info("Set current to %sA", amps)
