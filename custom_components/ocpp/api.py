@@ -157,73 +157,73 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
     #else:
     #    self.busy = True
     #    self.mqtt_timeout_timer = time.time()
-    async with self.mqtt_lock:
-        with self.mqtt_thread_lock:
-            if "WallboxControl" in msg.topic:
-                try:
-                    msg_json = json.loads(msg.payload.decode())
-                except json.decoder.JSONDecodeError:
-                    _LOGGER.error("Incorrect JSON Syntax!")
-                    return 1
-                cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
-                if 'wallbox_set_state' in msg_json and not self.busy_setting_state:
-                    self.busy_setting_state = True
-                    self.mqtt_timeout_timer = time.time()
-                    state = msg_json["wallbox_set_state"]
-                    try:
-                        await asyncio.sleep(2)
-                        if state == 'off':
-                            #await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
-                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
-                        if state == 'active':
-                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                            await asyncio.sleep(1)
-                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
-                        if state == 'standby':
-                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                            await asyncio.sleep(1)
-                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
-                        if state == 'reset':
-                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
-                        if state == 'unlock':
-                            await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
-                        await asyncio.sleep(10)
-                        self.busy_setting_state = False
-                        _LOGGER.info("Set state to %s", state)
-                    except ProtocolError as pe:
-                        _LOGGER.error(pe)
-                        await asyncio.sleep(30)
-                        self.busy = False
-                        self.busy_setting_current = False
-                        self.busy_setting_state = False
-                        # Restart backend if lost connection
-                        CentralSystem.create(self.hass, self.entry)
-                if 'wallbox_set_current' in msg_json and not self.busy_setting_current:
-                    self.busy_setting_current = True
-                    self.mqtt_timeout_timer = time.time()
-                    amps = float(msg_json["wallbox_set_current"])
-                    try:
-                        await asyncio.sleep(2)
-                        await self.set_max_charge_rate_amps(cp_id, value=amps)
-                        await asyncio.sleep(10)
-                        self.busy_setting_current = False
-                    except ProtocolError as pe:
-                        _LOGGER.error(pe)
-                        await asyncio.sleep(30)
-                        self.busy = False
-                        self.busy_setting_current = False
-                        self.busy_setting_state = False
-                        # Restart backend if lost connection
-                        CentralSystem.create(self.hass, self.entry)
-                    #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
-                    #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
-                    _LOGGER.info("Set current to %sA", amps)
+#    async with self.mqtt_lock:
+#        with self.mqtt_thread_lock:
+    if "WallboxControl" in msg.topic:
+        try:
+            msg_json = json.loads(msg.payload.decode())
+        except json.decoder.JSONDecodeError:
+            _LOGGER.error("Incorrect JSON Syntax!")
+            return 1
+        cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
+        if 'wallbox_set_state' in msg_json and not self.busy_setting_state:
+            self.busy_setting_state = True
+            self.mqtt_timeout_timer = time.time()
+            state = msg_json["wallbox_set_state"]
+            try:
                 await asyncio.sleep(2)
-                #self.busy_setting_current = False
-                #self.busy_setting_state = False
-                #self.busy = False
-                #self.mqtt_timeout_timer = time.time()
-                #_LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
+                if state == 'off':
+                    #await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
+                if state == 'active':
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
+                    await asyncio.sleep(1)
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
+                if state == 'standby':
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
+                    await asyncio.sleep(1)
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
+                if state == 'reset':
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
+                if state == 'unlock':
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
+                await asyncio.sleep(10)
+                self.busy_setting_state = False
+                _LOGGER.info("Set state to %s", state)
+            except ProtocolError as pe:
+                _LOGGER.error(pe)
+                await asyncio.sleep(30)
+                self.busy = False
+                self.busy_setting_current = False
+                self.busy_setting_state = False
+                # Restart backend if lost connection
+                CentralSystem.create(self.hass, self.entry)
+        if 'wallbox_set_current' in msg_json and not self.busy_setting_current:
+            self.busy_setting_current = True
+            self.mqtt_timeout_timer = time.time()
+            amps = float(msg_json["wallbox_set_current"])
+            try:
+                await asyncio.sleep(2)
+                await self.set_max_charge_rate_amps(cp_id, value=amps)
+                await asyncio.sleep(10)
+                self.busy_setting_current = False
+            except ProtocolError as pe:
+                _LOGGER.error(pe)
+                await asyncio.sleep(30)
+                self.busy = False
+                self.busy_setting_current = False
+                self.busy_setting_state = False
+                # Restart backend if lost connection
+                CentralSystem.create(self.hass, self.entry)
+            #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
+            #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
+            _LOGGER.info("Set current to %sA", amps)
+        await asyncio.sleep(2)
+        #self.busy_setting_current = False
+        #self.busy_setting_state = False
+        #self.busy = False
+        #self.mqtt_timeout_timer = time.time()
+        #_LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
 
 
 class CentralSystem:
@@ -1067,6 +1067,20 @@ class ChargePoint(cp):
             transaction_id=self.active_transaction_id
         )
         if WALLBOX_TYPE == 'ABL':
+            try:
+                await asyncio.sleep(2)
+                # await self.central.set_max_charge_rate_amps(self.n, value=amps)
+                await self.set_charge_rate(limit_amps=0)
+                await asyncio.sleep(2)
+                self.busy_setting_current = False
+            except ProtocolError as pe:
+                _LOGGER.error(pe)
+                await asyncio.sleep(30)
+                self.busy = False
+                self.busy_setting_current = False
+                self.busy_setting_state = False
+                # Restart backend if lost connection
+                CentralSystem.create(self.hass, self.entry)
             await self.configure('FreeCharging', "false")
             await self.configure('FreeChargingOffline', "false")
         self.publish_metrics()
