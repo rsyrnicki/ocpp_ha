@@ -177,16 +177,18 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
                             await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
                         if state == 'active':
                             await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                            await asyncio.sleep(2)
+                            await asyncio.sleep(1)
                             await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
                         if state == 'standby':
                             await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                            await asyncio.sleep(2)
+                            await asyncio.sleep(1)
                             await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
                         if state == 'reset':
                             await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
                         if state == 'unlock':
                             await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
+                        await asyncio.sleep(10)
+                        self.busy_setting_state = False
                         _LOGGER.info("Set state to %s", state)
                     except ProtocolError as pe:
                         _LOGGER.error(pe)
@@ -203,6 +205,8 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
                     try:
                         await asyncio.sleep(2)
                         await self.set_max_charge_rate_amps(cp_id, value=amps)
+                        await asyncio.sleep(10)
+                        self.busy_setting_current = False
                     except ProtocolError as pe:
                         _LOGGER.error(pe)
                         await asyncio.sleep(30)
@@ -215,8 +219,8 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
                     #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
                     _LOGGER.info("Set current to %sA", amps)
                 await asyncio.sleep(2)
-                self.busy_setting_current = False
-                self.busy_setting_state = False
+                #self.busy_setting_current = False
+                #self.busy_setting_state = False
                 #self.busy = False
                 #self.mqtt_timeout_timer = time.time()
                 #_LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
@@ -949,7 +953,7 @@ class ChargePoint(cp):
             _LOGGER.info("Smart charging is not supported by this charger")
             return False
         resp = await self.call(req)
-        self.central.busy_setting_current = False
+        #self.central.busy_setting_current = False
         #self.mqtt_timeout_timer = time.time()
         _LOGGER.debug("Set limit call recieved. Allowing new MQTT Messages from now on.")
         if resp.status == ChargingProfileStatus.accepted:
@@ -1037,7 +1041,7 @@ class ChargePoint(cp):
             connector_id=1, id_tag=self._metrics[cdet.identifier.value].value[:20]
         )
         resp = await self.call(req)
-        self.central.busy_setting_state = False
+        #self.central.busy_setting_state = False
         #self.mqtt_timeout_timer = time.time()
         _LOGGER.debug("Start transaction call recieved. Allowing new MQTT Messages from now on.")
         self.publish_metrics()
@@ -1067,7 +1071,7 @@ class ChargePoint(cp):
             await self.configure('FreeChargingOffline', "false")
         self.publish_metrics()
         resp = await self.call(req)
-        self.central.busy_setting_state = False
+        #self.central.busy_setting_state = False
         #self.mqtt_timeout_timer = time.time()
         _LOGGER.debug("Stop transaction call recieved. Allowing new MQTT Messages from now on.")
         if resp.status == RemoteStartStopStatus.accepted:
