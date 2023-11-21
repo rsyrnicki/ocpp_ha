@@ -203,10 +203,11 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
             self.mqtt_timeout_timer = time.time()
             amps = float(msg_json["wallbox_set_current"])
             try:
-                await asyncio.sleep(2)
-                await self.set_max_charge_rate_amps(cp_id, value=amps)
-                await asyncio.sleep(10)
-                self.busy_setting_current = False
+                if self.get_available(cp_id):
+                    await asyncio.sleep(2)
+                    await self.set_max_charge_rate_amps(cp_id, value=amps)
+                    await asyncio.sleep(10)
+                    self.busy_setting_current = False
             except ProtocolError as pe:
                 _LOGGER.error(pe)
                 await asyncio.sleep(30)
@@ -1066,21 +1067,22 @@ class ChargePoint(cp):
         req = call.RemoteStopTransactionPayload(
             transaction_id=self.active_transaction_id
         )
+        try:
+            self.busy_setting_current = True
+            await asyncio.sleep(2)
+            # await self.central.set_max_charge_rate_amps(self.n, value=amps)
+            await self.set_charge_rate(limit_amps=0)
+            await asyncio.sleep(2)
+            self.busy_setting_current = False
+        except ProtocolError as pe:
+            _LOGGER.error(pe)
+            await asyncio.sleep(30)
+            self.busy = False
+            self.busy_setting_current = False
+            self.busy_setting_state = False
+            # Restart backend if lost connection
+            CentralSystem.create(self.hass, self.entry)
         if WALLBOX_TYPE == 'ABL':
-            try:
-                await asyncio.sleep(2)
-                # await self.central.set_max_charge_rate_amps(self.n, value=amps)
-                await self.set_charge_rate(limit_amps=0)
-                await asyncio.sleep(2)
-                self.busy_setting_current = False
-            except ProtocolError as pe:
-                _LOGGER.error(pe)
-                await asyncio.sleep(30)
-                self.busy = False
-                self.busy_setting_current = False
-                self.busy_setting_state = False
-                # Restart backend if lost connection
-                CentralSystem.create(self.hass, self.entry)
             await self.configure('FreeCharging', "false")
             await self.configure('FreeChargingOffline', "false")
         self.publish_metrics()
