@@ -1071,7 +1071,8 @@ class ChargePoint(cp):
             self.busy_setting_current = True
             await asyncio.sleep(2)
             # await self.central.set_max_charge_rate_amps(self.n, value=amps)
-            await self.set_charge_rate(limit_amps=0)
+            if self.status == STATE_OK:
+                await self.set_charge_rate(limit_amps=0)
             await asyncio.sleep(2)
             self.busy_setting_current = False
         except ProtocolError as pe:
