@@ -1379,7 +1379,7 @@ class ChargePoint(cp):
         for task in self.tasks:
             task.cancel()
         await asyncio.sleep(30)
-        await self.reconnect(self._connection)
+        # await self.reconnect(self._connection)
 
     async def reconnect(self, connection: websockets.server.WebSocketServerProtocol):
         """Reconnect charge point."""
