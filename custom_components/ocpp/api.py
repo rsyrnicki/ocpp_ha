@@ -902,7 +902,7 @@ class ChargePoint(cp):
                 _LOGGER.warning("Failed with response: %s", resp.status)
                 return_value = False
             
-        self.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}/WallboxControl/{charge_point.serial}")
+        self.central.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}/WallboxControl/{self.serial}")
         return return_value
 
     async def clear_profile(self):
