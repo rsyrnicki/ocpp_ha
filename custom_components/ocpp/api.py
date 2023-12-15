@@ -197,7 +197,7 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
                 self.busy_setting_current = False
                 self.busy_setting_state = False
                 # Restart backend if lost connection
-                CentralSystem.create(self.hass, self.entry)
+                await CentralSystem.create(self.hass, self.entry)
         if 'wallbox_set_current' in msg_json and not self.busy_setting_current:
             self.busy_setting_current = True
             self.mqtt_timeout_timer = time.time()
@@ -215,7 +215,7 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
                 self.busy_setting_current = False
                 self.busy_setting_state = False
                 # Restart backend if lost connection
-                CentralSystem.create(self.hass, self.entry)
+                await CentralSystem.create(self.hass, self.entry)
             #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
             #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
             _LOGGER.info("Set current to %sA", amps)
@@ -834,6 +834,11 @@ class ChargePoint(cp):
         _LOGGER.info(f"supported features: {resp}")
         if resp.configuration_key != []:
             feature_list = (resp.configuration_key[0][om.value.value]).split(",")
+        elif WALLBOX_TYPE == 'ABL':
+            #feature_list = [prof.CORE, prof.FW, prof.AUTH, prof.SMART, prof.REM]
+            feature_list = [om.feature_profile_core.value, om.feature_profile_firmware.value, 
+                            om.feature_profile_auth.value, om.feature_profile_smart.value, 
+                            om.feature_profile_remote.value]
         else:
             feature_list = [""]
         if feature_list[0] == "":
@@ -896,6 +901,8 @@ class ChargePoint(cp):
             if resp.status != TriggerMessageStatus.accepted:
                 _LOGGER.warning("Failed with response: %s", resp.status)
                 return_value = False
+            
+        self.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}/WallboxControl/{charge_point.serial}")
         return return_value
 
     async def clear_profile(self):
@@ -1082,7 +1089,7 @@ class ChargePoint(cp):
             self.busy_setting_current = False
             self.busy_setting_state = False
             # Restart backend if lost connection
-            CentralSystem.create(self.hass, self.entry)
+            await CentralSystem.create(self.hass, self.entry)
         if WALLBOX_TYPE == 'ABL':
             await self.configure('FreeCharging', "false")
             await self.configure('FreeChargingOffline', "false")
