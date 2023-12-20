@@ -166,7 +166,7 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
             _LOGGER.error("Incorrect JSON Syntax!")
             return 1
         cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
-        if 'wallbox_set_state' in msg_json and not self.busy_setting_state:
+        if 'wallbox_set_state' in msg_json and (not self.busy_setting_state or WALLBOX_TYPE == 'ABL'):
             self.busy_setting_state = True
             self.mqtt_timeout_timer = time.time()
             state = msg_json["wallbox_set_state"]
@@ -198,12 +198,16 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
                 self.busy_setting_state = False
                 # Restart backend if lost connection
                 await CentralSystem.create(self.hass, self.entry)
-        if 'wallbox_set_current' in msg_json and not self.busy_setting_current:
+        if 'wallbox_set_current' in msg_json and (not self.busy_setting_current or WALLBOX_TYPE == 'ABL'):
             self.busy_setting_current = True
             self.mqtt_timeout_timer = time.time()
             amps = float(msg_json["wallbox_set_current"])
             try:
                 if self.get_available(cp_id) or WALLBOX_TYPE == 'ABL':
+                    if WALLBOX_TYPE == 'ABL':
+                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
+                        await asyncio.sleep(1)
+                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
                     await asyncio.sleep(2)
                     await self.set_max_charge_rate_amps(cp_id, value=amps)
                     await asyncio.sleep(10)
