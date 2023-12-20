@@ -203,7 +203,7 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
             self.mqtt_timeout_timer = time.time()
             amps = float(msg_json["wallbox_set_current"])
             try:
-                if self.get_available(cp_id):
+                if self.get_available(cp_id) or WALLBOX_TYPE == 'ABL':
                     await asyncio.sleep(2)
                     await self.set_max_charge_rate_amps(cp_id, value=amps)
                     await asyncio.sleep(10)
