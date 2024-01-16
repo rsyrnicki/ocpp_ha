@@ -374,16 +374,15 @@ class CentralSystem:
 
     def mqtt_on_message(self, client, userdata, msg):
         _LOGGER.info(f"[Central System]Received `{msg.payload.decode()}` from `{msg.topic}` topic")
-        with self.mqtt_thread_lock:
-            task = async_mqtt_on_message(self, client, userdata, msg)
-            task = asyncio.wait_for(task, timeout=40.0)
-            try: 
-                self.hass.async_create_task(task)
-            except TimeoutError:
-                _LOGGER.warning("MQTT Message timeout.")
-                self.busy = False
-                self.busy_setting_current = False
-                self.busy_setting_state = False
+        task = async_mqtt_on_message(self, client, userdata, msg)
+        task = asyncio.wait_for(task, timeout=40.0)
+        try: 
+            self.hass.async_create_task(task)
+        except TimeoutError:
+            _LOGGER.warning("MQTT Message timeout.")
+            self.busy = False
+            self.busy_setting_current = False
+            self.busy_setting_state = False
             
 
 
