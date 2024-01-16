@@ -166,7 +166,7 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
             self.mqtt_timeout_timer = time.time()
             state = msg_json["wallbox_set_state"]
             try:
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)
                 if state == 'off':
                     #await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
                     await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
@@ -182,7 +182,7 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
                     await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
                 if state == 'unlock':
                     await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
-                await asyncio.sleep(5)
+                await asyncio.sleep(10)
                 self.busy_setting_state = False
                 _LOGGER.info("Set state to %s", state)
             except ProtocolError as pe:
@@ -193,7 +193,7 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
                 self.busy_setting_state = False
                 # Restart backend if lost connection
                 await CentralSystem.create(self.hass, self.entry)
-        #if 'wallbox_set_current' in msg_json and (not self.busy_setting_current or WALLBOX_TYPE == 'ABL'):
+        # if 'wallbox_set_current' in msg_json and (not self.busy_setting_current or WALLBOX_TYPE == 'ABL'):
         if 'wallbox_set_current' in msg_json:
             self.busy_setting_current = True
             self.mqtt_timeout_timer = time.time()
@@ -206,7 +206,7 @@ async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
                     await asyncio.sleep(2)
                     await self.set_max_charge_rate_amps(cp_id, value=amps)
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(10)
                     self.busy_setting_current = False
             except ProtocolError as pe:
                 _LOGGER.error(pe)
