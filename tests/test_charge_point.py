@@ -11,6 +11,7 @@ from homeassistant.components.switch import (
     SERVICE_TURN_ON,
 )
 from homeassistant.const import ATTR_ENTITY_ID
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 import websockets
 
@@ -44,13 +45,14 @@ from ocpp.v16.enums import (
 from .const import MOCK_CONFIG_DATA, MOCK_CONFIG_DATA_2
 
 
+@pytest.mark.timeout(90)  # Set timeout for this test
 async def test_cms_responses(hass, socket_enabled):
     """Test central system responses to a charger."""
 
     async def test_switches(hass, socket_enabled):
         """Test switch operations."""
         for switch in SWITCHES:
-            result = await hass.services.async_call(
+            await hass.services.async_call(
                 SWITCH_DOMAIN,
                 SERVICE_TURN_ON,
                 service_data={
@@ -58,9 +60,9 @@ async def test_cms_responses(hass, socket_enabled):
                 },
                 blocking=True,
             )
-            assert result
+
             await asyncio.sleep(1)
-            result = await hass.services.async_call(
+            await hass.services.async_call(
                 SWITCH_DOMAIN,
                 SERVICE_TURN_OFF,
                 service_data={
@@ -68,18 +70,16 @@ async def test_cms_responses(hass, socket_enabled):
                 },
                 blocking=True,
             )
-            assert result
 
     async def test_buttons(hass, socket_enabled):
         """Test button operations."""
         for button in BUTTONS:
-            result = await hass.services.async_call(
+            await hass.services.async_call(
                 BUTTON_DOMAIN,
                 SERVICE_PRESS,
                 {ATTR_ENTITY_ID: f"{BUTTON_DOMAIN}.test_cpid_{button.key}"},
                 blocking=True,
             )
-            assert result
 
     async def test_services(hass, socket_enabled):
         """Test service operations."""
@@ -90,6 +90,7 @@ async def test_cms_responses(hass, socket_enabled):
             csvcs.service_get_diagnostics,
             csvcs.service_clear_profile,
             csvcs.service_data_transfer,
+            csvcs.service_set_charge_rate,
         ]
         for service in SERVICES:
             data = {}
@@ -103,32 +104,62 @@ async def test_cms_responses(hass, socket_enabled):
                 data = {"upload_url": "https://webhook.site/abc"}
             if service == csvcs.service_data_transfer:
                 data = {"vendor_id": "ABC"}
+            if service == csvcs.service_set_charge_rate:
+                data = {"limit_amps": 30}
 
-            result = await hass.services.async_call(
+            await hass.services.async_call(
                 OCPP_DOMAIN,
                 service.value,
                 service_data=data,
                 blocking=True,
             )
-            assert result
+        # test additional set charge rate options
+        await hass.services.async_call(
+            OCPP_DOMAIN,
+            csvcs.service_set_charge_rate,
+            service_data={"limit_watts": 3000},
+            blocking=True,
+        )
+        # test custom charge profile for advanced use
+        prof = {
+            "chargingProfileId": 8,
+            "stackLevel": 6,
+            "chargingProfileKind": "Relative",
+            "chargingProfilePurpose": "ChargePointMaxProfile",
+            "chargingSchedule": {
+                "chargingRateUnit": "A",
+                "chargingSchedulePeriod": [{"startPeriod": 0, "limit": 16.0}],
+            },
+        }
+        data = {"custom_profile": str(prof)}
+        await hass.services.async_call(
+            OCPP_DOMAIN,
+            csvcs.service_set_charge_rate,
+            service_data=data,
+            blocking=True,
+        )
 
         for number in NUMBERS:
             # test setting value of number slider
-            result = await hass.services.async_call(
+            await hass.services.async_call(
                 NUMBER_DOMAIN,
                 "set_value",
                 service_data={"value": "10"},
                 blocking=True,
                 target={ATTR_ENTITY_ID: f"{NUMBER_DOMAIN}.test_cpid_{number.key}"},
             )
-            assert result
 
     # Test MOCK_CONFIG_DATA_2
     if True:
         # Create a mock entry so we don't have to go through config flow
         config_entry2 = MockConfigEntry(
-            domain=OCPP_DOMAIN, data=MOCK_CONFIG_DATA_2, entry_id="test_cms2"
+            domain=OCPP_DOMAIN,
+            data=MOCK_CONFIG_DATA_2,
+            entry_id="test_cms2",
+            title="test_cms2",
         )
+        config_entry2.add_to_hass(hass)
+
         assert await async_setup_entry(hass, config_entry2)
         await hass.async_block_till_done()
 
@@ -152,7 +183,7 @@ async def test_cms_responses(hass, socket_enabled):
                         cp2.send_stop_transaction(),
                         cp2.send_meter_periodic_data(),
                     ),
-                    timeout=3,
+                    timeout=5,
                 )
             except asyncio.TimeoutError:
                 pass
@@ -163,8 +194,9 @@ async def test_cms_responses(hass, socket_enabled):
 
     # Create a mock entry so we don't have to go through config flow
     config_entry = MockConfigEntry(
-        domain=OCPP_DOMAIN, data=MOCK_CONFIG_DATA, entry_id="test_cms"
+        domain=OCPP_DOMAIN, data=MOCK_CONFIG_DATA, entry_id="test_cms", title="test_cms"
     )
+    config_entry.add_to_hass(hass)
     assert await async_setup_entry(hass, config_entry)
     await hass.async_block_till_done()
 
@@ -190,7 +222,7 @@ async def test_cms_responses(hass, socket_enabled):
                     cp.send_stop_transaction(),
                     cp.send_meter_periodic_data(),
                 ),
-                timeout=3,
+                timeout=5,
             )
         except websockets.exceptions.ConnectionClosedOK:
             pass
@@ -219,11 +251,68 @@ async def test_cms_responses(hass, socket_enabled):
                     cp.send_stop_transaction(),
                     cp.send_meter_periodic_data(),
                 ),
-                timeout=3,
+                timeout=5,
             )
         except websockets.exceptions.ConnectionClosedOK:
             pass
         await ws.close()
+
+    await asyncio.sleep(1)
+
+    # test restore feature of meter_start and active_tranasction_id.
+    async with websockets.connect(
+        "ws://127.0.0.1:9000/CP_1_res_vals",
+        subprotocols=["ocpp1.6"],
+    ) as ws:
+        # use a different id for debugging
+        cp = ChargePoint("CP_1_restore_values", ws)
+        cp.active_transactionId = None
+        # send None values
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    cp.start(),
+                    cp.send_meter_periodic_data(),
+                ),
+                timeout=5,
+            )
+        except asyncio.TimeoutError:
+            pass
+        # check if None
+        assert cs.get_metric("test_cpid", "Energy.Meter.Start") is None
+        assert cs.get_metric("test_cpid", "Transaction.Id") is None
+        # send new data
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    cp.send_start_transaction(12344),
+                    cp.send_meter_periodic_data(),
+                ),
+                timeout=5,
+            )
+        except asyncio.TimeoutError:
+            pass
+        # save for reference the values for meter_start and transaction_id
+        saved_meter_start = int(cs.get_metric("test_cpid", "Energy.Meter.Start"))
+        saved_transactionId = int(cs.get_metric("test_cpid", "Transaction.Id"))
+        # delete current values from api memory
+        cs.del_metric("test_cpid", "Energy.Meter.Start")
+        cs.del_metric("test_cpid", "Transaction.Id")
+        # send new data
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    cp.send_meter_periodic_data(),
+                ),
+                timeout=5,
+            )
+        except asyncio.TimeoutError:
+            pass
+        await ws.close()
+
+    # check if restored old values from HA when api have lost the values, i.e. simulated reboot of HA
+    assert int(cs.get_metric("test_cpid", "Energy.Meter.Start")) == saved_meter_start
+    assert int(cs.get_metric("test_cpid", "Transaction.Id")) == saved_transactionId
 
     await asyncio.sleep(1)
 
@@ -245,12 +334,12 @@ async def test_cms_responses(hass, socket_enabled):
                     cp.send_security_event(),
                     cp.send_firmware_status(),
                     cp.send_data_transfer(),
-                    cp.send_start_transaction(),
+                    cp.send_start_transaction(12345),
                     cp.send_meter_err_phases(),
                     cp.send_meter_line_voltage(),
                     cp.send_meter_periodic_data(),
                     # add delay to allow meter data to be processed
-                    cp.send_stop_transaction(2),
+                    cp.send_stop_transaction(1),
                 ),
                 timeout=5,
             )
@@ -259,6 +348,9 @@ async def test_cms_responses(hass, socket_enabled):
         await ws.close()
     assert int(cs.get_metric("test_cpid", "Energy.Active.Import.Register")) == int(
         1305570 / 1000
+    )
+    assert int(cs.get_metric("test_cpid", "Energy.Session")) == int(
+        (54321 - 12345) / 1000
     )
     assert int(cs.get_metric("test_cpid", "Current.Import")) == int(0)
     assert int(cs.get_metric("test_cpid", "Voltage")) == int(228)
@@ -307,8 +399,75 @@ async def test_cms_responses(hass, socket_enabled):
             pass
         await ws.close()
     assert int(cs.get_metric("test_cpid", "Frequency")) == int(50)
+    assert float(cs.get_metric("test_cpid", "Energy.Active.Import.Register")) == float(
+        1101.452
+    )
 
     await asyncio.sleep(1)
+
+    # test ocpp messages sent from charger that don't support errata 3.9
+    # i.e. "Energy.Meter.Start" starts from 0 for each session and "Energy.Active.Import.Register"
+    # reports starting from 0 Wh for every new transaction id. Total main meter values are without transaction id.
+    async with websockets.connect(
+        "ws://127.0.0.1:9000/CP_1_non_er_3.9",
+        subprotocols=["ocpp1.6"],
+    ) as ws:
+        # use a different id for debugging
+        cp = ChargePoint("CP_1_non_errata_3.9", ws)
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    cp.start(),
+                    cp.send_start_transaction(0),
+                    cp.send_meter_periodic_data(),
+                    cp.send_main_meter_clock_data(),
+                    # add delay to allow meter data to be processed
+                    cp.send_stop_transaction(1),
+                ),
+                timeout=5,
+            )
+        except asyncio.TimeoutError:
+            pass
+        await ws.close()
+
+    # Last sent "Energy.Active.Import.Register" value without transaction id should be here.
+    assert int(cs.get_metric("test_cpid", "Energy.Active.Import.Register")) == int(
+        67230012 / 1000
+    )
+    assert cs.get_unit("test_cpid", "Energy.Active.Import.Register") == "kWh"
+
+    # Last sent "Energy.Active.Import.Register" value with transaction id should be here.
+    assert int(cs.get_metric("test_cpid", "Energy.Session")) == int(1305570 / 1000)
+    assert cs.get_unit("test_cpid", "Energy.Session") == "kWh"
+
+    await asyncio.sleep(1)
+
+    # test ocpp messages sent from charger that don't support errata 3.9 with meter values with kWh as energy unit
+    async with websockets.connect(
+        "ws://127.0.0.1:9000/CP_1_non_er_3.9",
+        subprotocols=["ocpp1.6"],
+    ) as ws:
+        # use a different id for debugging
+        cp = ChargePoint("CP_1_non_errata_3.9", ws)
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    cp.start(),
+                    cp.send_start_transaction(0),
+                    cp.send_meter_energy_kwh(),
+                    cp.send_meter_clock_data(),
+                    # add delay to allow meter data to be processed
+                    cp.send_stop_transaction(1),
+                ),
+                timeout=5,
+            )
+        except asyncio.TimeoutError:
+            pass
+        await ws.close()
+
+    assert int(cs.get_metric("test_cpid", "Energy.Active.Import.Register")) == int(1101)
+    assert int(cs.get_metric("test_cpid", "Energy.Session")) == int(11)
+    assert cs.get_unit("test_cpid", "Energy.Active.Import.Register") == "kWh"
 
     # test ocpp rejection messages sent from charger to cms
     cs.charge_points["test_cpid"].received_boot_notification = False
@@ -604,12 +763,12 @@ class ChargePoint(cpclass):
         resp = await self.call(request)
         assert resp.status == DataTransferStatus.accepted
 
-    async def send_start_transaction(self):
+    async def send_start_transaction(self, meter_start: int = 12345):
         """Send a start transaction notification."""
         request = call.StartTransactionPayload(
             connector_id=1,
             id_tag="test_cp",
-            meter_start=12345,
+            meter_start=meter_start,
             timestamp=datetime.now(tz=timezone.utc).isoformat(),
         )
         resp = await self.call(request)
@@ -653,8 +812,10 @@ class ChargePoint(cpclass):
 
     async def send_meter_periodic_data(self):
         """Send periodic meter data notification."""
-        while self.active_transactionId == 0:
+        n = 0
+        while self.active_transactionId == 0 and n < 2:
             await asyncio.sleep(1)
+            n += 1
         request = call.MeterValuesPayload(
             connector_id=1,
             transaction_id=self.active_transactionId,
@@ -871,6 +1032,55 @@ class ChargePoint(cpclass):
         resp = await self.call(request)
         assert resp is not None
 
+    async def send_meter_energy_kwh(self):
+        """Send periodic energy meter value with kWh unit."""
+        while self.active_transactionId == 0:
+            await asyncio.sleep(1)
+        request = call.MeterValuesPayload(
+            connector_id=1,
+            transaction_id=self.active_transactionId,
+            meter_value=[
+                {
+                    "timestamp": "2021-06-21T16:15:09Z",
+                    "sampledValue": [
+                        {
+                            "unit": "kWh",
+                            "value": "11",
+                            "context": "Sample.Periodic",
+                            "format": "Raw",
+                            "measurand": "Energy.Active.Import.Register",
+                        },
+                    ],
+                }
+            ],
+        )
+        resp = await self.call(request)
+        assert resp is not None
+
+    async def send_main_meter_clock_data(self):
+        """Send periodic main meter value. Main meter values dont have transaction_id."""
+        while self.active_transactionId == 0:
+            await asyncio.sleep(1)
+        request = call.MeterValuesPayload(
+            connector_id=1,
+            meter_value=[
+                {
+                    "timestamp": "2021-06-21T16:15:09Z",
+                    "sampledValue": [
+                        {
+                            "value": "67230012",
+                            "context": "Sample.Clock",
+                            "format": "Raw",
+                            "measurand": "Energy.Active.Import.Register",
+                            "location": "Inlet",
+                        },
+                    ],
+                }
+            ],
+        )
+        resp = await self.call(request)
+        assert resp is not None
+
     async def send_meter_clock_data(self):
         """Send periodic meter data notification."""
         self.active_transactionId = 0
@@ -921,8 +1131,10 @@ class ChargePoint(cpclass):
         """Send a stop transaction notification."""
         # add delay to allow meter data to be processed
         await asyncio.sleep(delay)
-        while self.active_transactionId == 0:
+        n = 0
+        while self.active_transactionId == 0 and n < 2:
             await asyncio.sleep(1)
+            n += 1
         request = call.StopTransactionPayload(
             meter_stop=54321,
             timestamp=datetime.now(tz=timezone.utc).isoformat(),

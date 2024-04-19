@@ -72,7 +72,7 @@ You can run the tests using the following commands from the root folder:
 python3 -m venv venv
 source venv/bin/activate
 # Install requirements
-pip install -r requirements_test.txt
+pip install -r requirements.txt
 # Run tests and get a summary of successes/failures and code coverage
 pytest --durations=10 --cov-report term-missing --cov=custom_components.ocpp tests
 ```
@@ -83,7 +83,7 @@ your changes to the integration.
 ## Pre-commit
 
 You can use the [pre-commit](https://pre-commit.com/) settings included in the
-repostory to have code style and linting checks.
+repository to have code style and linting checks.
 
 With `pre-commit` tool already installed,
 activate the settings of the repository:

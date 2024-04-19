@@ -6,6 +6,7 @@ import threading
 from collections import defaultdict
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
+import json
 import logging
 from math import sqrt
 import ssl
@@ -17,7 +18,7 @@ import time
 
 from homeassistant.components.persistent_notification import DOMAIN as PN_DOMAIN
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import STATE_OK, STATE_UNAVAILABLE, TIME_MINUTES
+from homeassistant.const import STATE_OK, STATE_UNAVAILABLE, STATE_UNKNOWN, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry, entity_component, entity_registry
 import homeassistant.helpers.config_validation as cv
@@ -120,6 +121,8 @@ logging.getLogger(DOMAIN).setLevel(logging.INFO)
 logging.getLogger("asyncio").setLevel(logging.DEBUG)
 logging.getLogger("websockets").setLevel(logging.DEBUG)
 
+TIME_MINUTES = UnitOfTime.MINUTES
+
 UFW_SERVICE_DATA_SCHEMA = vol.Schema(
     {
         vol.Required("firmware_url"): cv.string,
@@ -149,6 +152,90 @@ TRANS_SERVICE_DATA_SCHEMA = vol.Schema(
         vol.Optional("data"): cv.string,
     }
 )
+CHRGR_SERVICE_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Optional("limit_amps"): cv.positive_float,
+        vol.Optional("limit_watts"): cv.positive_int,
+        vol.Optional("conn_id"): cv.positive_int,
+        vol.Optional("custom_profile"): vol.Any(cv.string, dict),
+    }
+)
+
+
+async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
+    if "WallboxControl" in msg.topic:
+        try:
+            msg_json = json.loads(msg.payload.decode())
+        except json.decoder.JSONDecodeError:
+            _LOGGER.error("Incorrect JSON Syntax!")
+            return 1
+        cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
+        # if 'wallbox_set_state' in msg_json and (not self.busy_setting_state or WALLBOX_TYPE == 'ABL'):
+        if 'wallbox_set_state' in msg_json or WALLBOX_TYPE == 'ABL':
+        
+            self.busy_setting_state = True
+            self.mqtt_timeout_timer = time.time()
+            state = msg_json["wallbox_set_state"]
+            try:
+                await asyncio.sleep(2)
+                if state == 'off':
+                    #await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
+                if state == 'active':
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
+                    await asyncio.sleep(1)
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
+                if state == 'standby':
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
+                    await asyncio.sleep(1)
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
+                if state == 'reset':
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
+                if state == 'unlock':
+                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
+                await asyncio.sleep(10)
+                self.busy_setting_state = False
+                _LOGGER.info("Set state to %s", state)
+            except ProtocolError as pe:
+                _LOGGER.error(pe)
+                await asyncio.sleep(10)
+                self.busy = False
+                self.busy_setting_current = False
+                self.busy_setting_state = False
+                # Restart backend if lost connection
+                await CentralSystem.create(self.hass, self.entry)
+        # if 'wallbox_set_current' in msg_json and (not self.busy_setting_current or WALLBOX_TYPE == 'ABL'):
+        if 'wallbox_set_current' in msg_json:
+            self.busy_setting_current = True
+            self.mqtt_timeout_timer = time.time()
+            amps = float(msg_json["wallbox_set_current"])
+            try:
+                if self.get_available(cp_id) or WALLBOX_TYPE == 'ABL':
+                    if WALLBOX_TYPE == 'ABL':
+                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
+                        await asyncio.sleep(1)
+                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
+                    await asyncio.sleep(2)
+                    await self.set_max_charge_rate_amps(cp_id, value=amps)
+                    await asyncio.sleep(10)
+                    self.busy_setting_current = False
+            except ProtocolError as pe:
+                _LOGGER.error(pe)
+                await asyncio.sleep(10)
+                self.busy = False
+                self.busy_setting_current = False
+                self.busy_setting_state = False
+                # Restart backend if lost connection
+                await CentralSystem.create(self.hass, self.entry)
+            #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
+            #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
+            _LOGGER.info("Set current to %sA", amps)
+        await asyncio.sleep(2)
+        #self.busy_setting_current = False
+        #self.busy_setting_state = False
+        #self.busy = False
+        #self.mqtt_timeout_timer = time.time()
+        #_LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
 
 
 async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
@@ -457,6 +544,18 @@ class CentralSystem:
         #_LOGGER.warning("[get_metric] cp_id %s not found in the charge_points dict (%s)", cp_id, measurand)
         return None
 
+    def del_metric(self, cp_id: str, measurand: str):
+        """Set given measurand to None."""
+        if cp_id in self.charge_points:
+            self.charge_points[cp_id]._metrics[measurand].value = None
+        return None
+
+    def del_metric(self, cp_id: str, measurand: str):
+        """Set given measurand to None."""
+        if cp_id in self.charge_points:
+            self.charge_points[cp_id]._metrics[measurand].value = None
+        return None
+
     def get_unit(self, cp_id: str, measurand: str):
         """Return unit of given measurand."""
         if cp_id in self.charge_points:
@@ -591,12 +690,13 @@ class ChargePoint(cp):
         self.received_boot_notification = False
         self.post_connect_success = False
         self.tasks = None
+        self._charger_reports_session_energy = False
         self._metrics = defaultdict(lambda: Metric(None, None))
         self._metrics[cdet.identifier.value].value = id
         self._metrics[csess.session_time.value].unit = TIME_MINUTES
         self._metrics[csess.session_energy.value].unit = UnitOfMeasure.kwh.value
         self._metrics[csess.meter_start.value].unit = UnitOfMeasure.kwh.value
-        self._attr_supported_features: int = 0
+        self._attr_supported_features = prof.NONE
         self._metrics[cstat.reconnects.value].value: int = 0
         self.mqtt_metrics = OrderedDict()
 
@@ -706,6 +806,7 @@ class ChargePoint(cp):
 
     async def post_connect(self):
         """Logic to be executed right after a charger connects."""
+
         # Define custom service handles for charge point
         async def handle_clear_profile(call):
             """Handle the clear profile service call."""
@@ -760,6 +861,44 @@ class ChargePoint(cp):
             await self.data_transfer(vendor, message, data)
             self.publish_metrics()
 
+        async def handle_set_charge_rate(call):
+            """Handle the data transfer service call."""
+            if self.status == STATE_UNAVAILABLE:
+                _LOGGER.warning("%s charger is currently unavailable", self.id)
+                return
+            amps = call.data.get("limit_amps", None)
+            watts = call.data.get("limit_watts", None)
+            id = call.data.get("conn_id", 0)
+            custom_profile = call.data.get("custom_profile", None)
+            if custom_profile is not None:
+                if type(custom_profile) is str:
+                    custom_profile = custom_profile.replace("'", '"')
+                    custom_profile = json.loads(custom_profile)
+                await self.set_charge_rate(profile=custom_profile, conn_id=id)
+            elif watts is not None:
+                await self.set_charge_rate(limit_watts=watts, conn_id=id)
+            elif amps is not None:
+                await self.set_charge_rate(limit_amps=amps, conn_id=id)
+
+        async def handle_set_charge_rate(call):
+            """Handle the data transfer service call."""
+            if self.status == STATE_UNAVAILABLE:
+                _LOGGER.warning("%s charger is currently unavailable", self.id)
+                return
+            amps = call.data.get("limit_amps", None)
+            watts = call.data.get("limit_watts", None)
+            id = call.data.get("conn_id", 0)
+            custom_profile = call.data.get("custom_profile", None)
+            if custom_profile is not None:
+                if type(custom_profile) is str:
+                    custom_profile = custom_profile.replace("'", '"')
+                    custom_profile = json.loads(custom_profile)
+                await self.set_charge_rate(profile=custom_profile, conn_id=id)
+            elif watts is not None:
+                await self.set_charge_rate(limit_watts=watts, conn_id=id)
+            elif amps is not None:
+                await self.set_charge_rate(limit_amps=amps, conn_id=id)
+
         try:
             self.status = STATE_OK
             await asyncio.sleep(2)
@@ -767,10 +906,42 @@ class ChargePoint(cp):
             resp = await self.get_configuration(ckey.number_of_connectors.value)
             self._metrics[cdet.connectors.value].value = resp
             await self.get_configuration(ckey.heartbeat_interval.value)
-            await self.configure(
-                ckey.meter_values_sampled_data.value,
-                self.entry.data.get(CONF_MONITORED_VARIABLES, DEFAULT_MEASURAND),
+
+            all_measurands = self.entry.data.get(
+                CONF_MONITORED_VARIABLES, DEFAULT_MEASURAND
             )
+
+            accepted_measurands = []
+            key = ckey.meter_values_sampled_data.value
+
+            for measurand in all_measurands.split(","):
+                _LOGGER.debug(f"'{self.id}' trying measurand '{measurand}'")
+                req = call.ChangeConfigurationPayload(key=key, value=measurand)
+                resp = await self.call(req)
+                if resp.status == ConfigurationStatus.accepted:
+                    _LOGGER.debug(f"'{self.id}' adding measurand '{measurand}'")
+                    accepted_measurands.append(measurand)
+
+            accepted_measurands = ",".join(accepted_measurands)
+
+            if len(accepted_measurands) > 0:
+                _LOGGER.debug(f"'{self.id}' allowed measurands '{accepted_measurands}'")
+                await self.configure(
+                    ckey.meter_values_sampled_data.value,
+                    accepted_measurands,
+                )
+            else:
+                _LOGGER.debug(f"'{self.id}' measurands not configurable by OCPP")
+                resp = await self.get_configuration(
+                    ckey.meter_values_sampled_data.value
+                )
+                accepted_measurands = resp
+                _LOGGER.debug(f"'{self.id}' allowed measurands '{accepted_measurands}'")
+
+            updated_entry = {**self.entry.data}
+            updated_entry[CONF_MONITORED_VARIABLES] = accepted_measurands
+            self.hass.config_entries.async_update_entry(self.entry, data=updated_entry)
+
             await self.configure(
                 ckey.meter_value_sample_interval.value,
                 str(self.entry.data.get(CONF_METER_INTERVAL, DEFAULT_METER_INTERVAL)),
@@ -808,6 +979,12 @@ class ChargePoint(cp):
                 self.hass.services.async_register(
                     DOMAIN, csvcs.service_clear_profile.value, handle_clear_profile
                 )
+                self.hass.services.async_register(
+                    DOMAIN,
+                    csvcs.service_set_charge_rate.value,
+                    handle_set_charge_rate,
+                    CHRGR_SERVICE_DATA_SCHEMA,
+                )
             if prof.FW in self._attr_supported_features:
                 self.hass.services.async_register(
                     DOMAIN,
@@ -833,7 +1010,7 @@ class ChargePoint(cp):
                 if self.received_boot_notification is False:
                     await self.trigger_boot_notification()
                 await self.trigger_status_notification()
-        except (NotImplementedError) as e:
+        except NotImplementedError as e:
             _LOGGER.error("Configuration of the charger failed: %s", e)
         
 
@@ -928,8 +1105,28 @@ class ChargePoint(cp):
             )
             return False
 
-    async def set_charge_rate(self, limit_amps: int = 32, limit_watts: int = 22000):
+    async def set_charge_rate(
+        self,
+        limit_amps: int = 32,
+        limit_watts: int = 22000,
+        conn_id: int = 0,
+        profile: dict | None = None,
+    ):
         """Set a charging profile with defined limit."""
+        if profile is not None:  # assumes advanced user and correct profile format
+            req = call.SetChargingProfilePayload(
+                connector_id=conn_id, cs_charging_profiles=profile
+            )
+            resp = await self.call(req)
+            if resp.status == ChargingProfileStatus.accepted:
+                return True
+            else:
+                _LOGGER.warning("Failed with response: %s", resp.status)
+                await self.notify_ha(
+                    f"Warning: Set charging profile failed with response {resp.status}"
+                )
+                return False
+
         if WALLBOX_TYPE == 'ABL':
             for l in LIMITER:
                 await self.data_transfer('ABL', 'SetLimit', f'logicalid={l};value={limit_amps}')
@@ -953,7 +1150,7 @@ class ChargePoint(cp):
             )
             stack_level = int(resp)
             req = call.SetChargingProfilePayload(
-                connector_id=0,
+                connector_id=conn_id,
                 cs_charging_profiles={
                     om.charging_profile_id.value: 8,
                     om.stack_level.value: stack_level,
@@ -982,7 +1179,7 @@ class ChargePoint(cp):
             )
             # try a lower stack level for chargers where level < maximum, not <=
             req = call.SetChargingProfilePayload(
-                connector_id=0,
+                connector_id=conn_id,
                 cs_charging_profiles={
                     om.charging_profile_id.value: 8,
                     om.stack_level.value: stack_level - 1,
@@ -1528,6 +1725,30 @@ class ChargePoint(cp):
 
         transaction_id: int = kwargs.get(om.transaction_id.name, 0)
 
+        # If missing meter_start or active_transaction_id try to restore from HA states. If HA
+        # does not have values either, generate new ones.
+        if self._metrics[csess.meter_start.value].value is None:
+            value = self.get_ha_metric(csess.meter_start.value)
+            if value is None:
+                value = self._metrics[DEFAULT_MEASURAND].value
+            else:
+                value = float(value)
+                _LOGGER.debug(
+                    f"{csess.meter_start.value} was None, restored value={value} from HA."
+                )
+            self._metrics[csess.meter_start.value].value = value
+        if self._metrics[csess.transaction_id.value].value is None:
+            value = self.get_ha_metric(csess.transaction_id.value)
+            if value is None:
+                value = kwargs.get(om.transaction_id.name)
+            else:
+                value = int(value)
+                _LOGGER.debug(
+                    f"{csess.transaction_id.value} was None, restored value={value} from HA."
+                )
+            self._metrics[csess.transaction_id.value].value = value
+            self.active_transaction_id = value
+
         transaction_matches: bool = False
         # match is also false if no transaction is in progress ie active_transaction_id==transaction_id==0
         if transaction_id == self.active_transaction_id and transaction_id != 0:
@@ -1550,10 +1771,38 @@ class ChargePoint(cp):
                     measurand = DEFAULT_MEASURAND
                     unit = DEFAULT_ENERGY_UNIT
 
+                if measurand == DEFAULT_MEASURAND and unit is None:
+                    unit = DEFAULT_ENERGY_UNIT
+
+                if self._metrics[csess.meter_start.value].value == 0:
+                    # Charger reports Energy.Active.Import.Register directly as Session energy for transactions.
+                    self._charger_reports_session_energy = True
+
                 if phase is None:
                     if unit == DEFAULT_POWER_UNIT:
                         self._metrics[measurand].value = float(value) / 1000
                         self._metrics[measurand].unit = HA_POWER_UNIT
+                    elif (
+                        measurand == DEFAULT_MEASURAND
+                        and self._charger_reports_session_energy
+                    ):
+                        if transaction_matches:
+                            if unit == DEFAULT_ENERGY_UNIT:
+                                value = float(value) / 1000
+                                unit = HA_ENERGY_UNIT
+                            self._metrics[csess.session_energy.value].value = float(
+                                value
+                            )
+                            self._metrics[csess.session_energy.value].unit = unit
+                            self._metrics[csess.session_energy.value].extra_attr[
+                                cstat.id_tag.name
+                            ] = self._metrics[cstat.id_tag.value].value
+                        else:
+                            if unit == DEFAULT_ENERGY_UNIT:
+                                value = float(value) / 1000
+                                unit = HA_ENERGY_UNIT
+                            self._metrics[measurand].value = float(value)
+                            self._metrics[measurand].unit = unit
                     elif unit == DEFAULT_ENERGY_UNIT:
                         if transaction_matches:
                             self._metrics[measurand].value = float(value) / 1000
@@ -1577,15 +1826,6 @@ class ChargePoint(cp):
             # _LOGGER.debug("Meter data not yet processed: %s", unprocessed)
             if unprocessed is not None:
                 self.process_phases(unprocessed)
-        if csess.meter_start.value not in self._metrics:
-            self._metrics[csess.meter_start.value].value = self._metrics[
-                DEFAULT_MEASURAND
-            ]
-        if csess.transaction_id.value not in self._metrics:
-            self._metrics[csess.transaction_id.value].value = kwargs.get(
-                om.transaction_id.name
-            )
-            self.active_transaction_id = kwargs.get(om.transaction_id.name)
         if transaction_matches:
             self._metrics[csess.session_time.value].value = round(
                 (
@@ -1595,7 +1835,10 @@ class ChargePoint(cp):
                 / 60
             )
             self._metrics[csess.session_time.value].unit = "min"
-            if self._metrics[csess.meter_start.value].value is not None:
+            if (
+                self._metrics[csess.meter_start.value].value is not None
+                and not self._charger_reports_session_energy
+            ):
                 self._metrics[csess.session_energy.value].value = float(
                     self._metrics[DEFAULT_MEASURAND].value or 0
                 ) - float(self._metrics[csess.meter_start.value].value)
@@ -1795,7 +2038,10 @@ class ChargePoint(cp):
             )
         self.active_transaction_id = 0
         self._metrics[cstat.stop_reason.value].value = kwargs.get(om.reason.name, None)
-        if self._metrics[csess.meter_start.value].value is not None:
+        if (
+            self._metrics[csess.meter_start.value].value is not None
+            and not self._charger_reports_session_energy
+        ):
             self._metrics[csess.session_energy.value].value = int(
                 meter_stop
             ) / 1000 - float(self._metrics[csess.meter_start.value].value)
@@ -1843,6 +2089,20 @@ class ChargePoint(cp):
     def get_metric(self, measurand: str):
         """Return last known value for given measurand."""
         return self._metrics[measurand].value
+
+    def get_ha_metric(self, measurand: str):
+        """Return last known value in HA for given measurand."""
+        entity_id = "sensor." + "_".join(
+            [self.central.cpid.lower(), measurand.lower().replace(".", "_")]
+        )
+        try:
+            value = self.hass.states.get(entity_id).state
+        except Exception as e:
+            _LOGGER.debug(f"An error occurred when getting entity state from HA: {e}")
+            return None
+        if value == STATE_UNAVAILABLE or value == STATE_UNKNOWN:
+            return None
+        return value
 
     def get_extra_attr(self, measurand: str):
         """Return last known extra attributes for given measurand."""
