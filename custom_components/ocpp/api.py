@@ -161,157 +161,89 @@ CHRGR_SERVICE_DATA_SCHEMA = vol.Schema(
     }
 )
 
-
 async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
-    if "WallboxControl" in msg.topic:
-        try:
-            msg_json = json.loads(msg.payload.decode())
-        except json.decoder.JSONDecodeError:
-            _LOGGER.error("Incorrect JSON Syntax!")
-            return 1
-        cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
-        # if 'wallbox_set_state' in msg_json and (not self.busy_setting_state or WALLBOX_TYPE == 'ABL'):
-        if 'wallbox_set_state' in msg_json or WALLBOX_TYPE == 'ABL':
-        
-            self.busy_setting_state = True
-            self.mqtt_timeout_timer = time.time()
-            state = msg_json["wallbox_set_state"]
+    _LOGGER.debug(f"MQTT message received: {client}, {userdata}, {msg}")
+    try:
+        if "WallboxControl" in msg.topic:
             try:
-                await asyncio.sleep(2)
-                if state == 'off':
-                    #await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
-                if state == 'active':
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                    await asyncio.sleep(1)
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
-                if state == 'standby':
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                    await asyncio.sleep(1)
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
-                if state == 'reset':
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
-                if state == 'unlock':
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
-                await asyncio.sleep(10)
-                self.busy_setting_state = False
-                _LOGGER.info("Set state to %s", state)
-            except ProtocolError as pe:
-                _LOGGER.error(pe)
-                await asyncio.sleep(10)
-                self.busy = False
-                self.busy_setting_current = False
-                self.busy_setting_state = False
-                # Restart backend if lost connection
-                await CentralSystem.create(self.hass, self.entry)
-        # if 'wallbox_set_current' in msg_json and (not self.busy_setting_current or WALLBOX_TYPE == 'ABL'):
-        if 'wallbox_set_current' in msg_json:
-            self.busy_setting_current = True
-            self.mqtt_timeout_timer = time.time()
-            amps = float(msg_json["wallbox_set_current"])
-            try:
-                if self.get_available(cp_id) or WALLBOX_TYPE == 'ABL':
-                    if WALLBOX_TYPE == 'ABL':
+                msg_json = json.loads(msg.payload.decode())
+            except json.decoder.JSONDecodeError:
+                _LOGGER.error("Incorrect JSON Syntax!")
+                return 1
+            cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
+            # if 'wallbox_set_state' in msg_json and (not self.busy_setting_state or WALLBOX_TYPE == 'ABL'):
+            if 'wallbox_set_state' in msg_json:
+                _LOGGER.debug("Setting state...")
+                self.busy_setting_state = True
+                self.mqtt_timeout_timer = time.time()
+                state = msg_json["wallbox_set_state"]
+                try:
+                    #await asyncio.sleep(2)
+                    if state == 'off':
+                        #await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
+                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
+                    if state == 'active':
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                        await asyncio.sleep(1)
+                        #await asyncio.sleep(1)
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
-                    await asyncio.sleep(2)
-                    await self.set_max_charge_rate_amps(cp_id, value=amps)
-                    await asyncio.sleep(10)
-                    self.busy_setting_current = False
-            except ProtocolError as pe:
-                _LOGGER.error(pe)
-                await asyncio.sleep(10)
-                self.busy = False
-                self.busy_setting_current = False
-                self.busy_setting_state = False
-                # Restart backend if lost connection
-                await CentralSystem.create(self.hass, self.entry)
-            #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
-            #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
-            _LOGGER.info("Set current to %sA", amps)
-        await asyncio.sleep(2)
-        #self.busy_setting_current = False
-        #self.busy_setting_state = False
-        #self.busy = False
-        #self.mqtt_timeout_timer = time.time()
-        #_LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
-
-
-async def async_mqtt_on_message(self: CentralSystem, client, userdata, msg):
-    if "WallboxControl" in msg.topic:
-        try:
-            msg_json = json.loads(msg.payload.decode())
-        except json.decoder.JSONDecodeError:
-            _LOGGER.error("Incorrect JSON Syntax!")
-            return 1
-        cp_id = self.find_cp_id_by_serial(msg_json['wallbox_id'])
-        # if 'wallbox_set_state' in msg_json and (not self.busy_setting_state or WALLBOX_TYPE == 'ABL'):
-        if 'wallbox_set_state' in msg_json or WALLBOX_TYPE == 'ABL':
-        
-            self.busy_setting_state = True
-            self.mqtt_timeout_timer = time.time()
-            state = msg_json["wallbox_set_state"]
-            try:
-                await asyncio.sleep(2)
-                if state == 'off':
-                    #await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=False)
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
-                if state == 'active':
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                    await asyncio.sleep(1)
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
-                if state == 'standby':
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                    await asyncio.sleep(1)
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
-                if state == 'reset':
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
-                if state == 'unlock':
-                    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
-                await asyncio.sleep(10)
-                self.busy_setting_state = False
-                _LOGGER.info("Set state to %s", state)
-            except ProtocolError as pe:
-                _LOGGER.error(pe)
-                await asyncio.sleep(10)
-                self.busy = False
-                self.busy_setting_current = False
-                self.busy_setting_state = False
-                # Restart backend if lost connection
-                await CentralSystem.create(self.hass, self.entry)
-        # if 'wallbox_set_current' in msg_json and (not self.busy_setting_current or WALLBOX_TYPE == 'ABL'):
-        if 'wallbox_set_current' in msg_json:
-            self.busy_setting_current = True
-            self.mqtt_timeout_timer = time.time()
-            amps = float(msg_json["wallbox_set_current"])
-            try:
-                if self.get_available(cp_id) or WALLBOX_TYPE == 'ABL':
-                    if WALLBOX_TYPE == 'ABL':
+                    if state == 'standby':
                         await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
-                        await asyncio.sleep(1)
-                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
-                    await asyncio.sleep(2)
-                    await self.set_max_charge_rate_amps(cp_id, value=amps)
-                    await asyncio.sleep(10)
+                        #await asyncio.sleep(1)
+                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_stop.name)
+                    if state == 'reset':
+                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_reset.name, state=True)
+                    if state == 'unlock':
+                        await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_unlock.name, state=True)
+                    #await asyncio.sleep(10)
+                    self.busy_setting_state = False
+                    _LOGGER.info("Set state to %s", state)
+                except ProtocolError as pe:
+                    _LOGGER.error(pe)
+                    #await asyncio.sleep(10)
+                    self.busy = False
                     self.busy_setting_current = False
-            except ProtocolError as pe:
-                _LOGGER.error(pe)
-                await asyncio.sleep(10)
-                self.busy = False
-                self.busy_setting_current = False
-                self.busy_setting_state = False
-                # Restart backend if lost connection
-                await CentralSystem.create(self.hass, self.entry)
-            #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
-            #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
-            _LOGGER.info("Set current to %sA", amps)
-        await asyncio.sleep(2)
-        #self.busy_setting_current = False
-        #self.busy_setting_state = False
-        #self.busy = False
-        #self.mqtt_timeout_timer = time.time()
-        #_LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
+                    self.busy_setting_state = False
+                    # Restart backend if lost connection
+                    await CentralSystem.create(self.hass, self.entry)
+            # if 'wallbox_set_current' in msg_json and (not self.busy_setting_current or WALLBOX_TYPE == 'ABL'):
+            if 'wallbox_set_current' in msg_json:
+                _LOGGER.debug("Setting current...")
+                self.busy_setting_current = True
+                self.mqtt_timeout_timer = time.time()
+                amps = float(msg_json["wallbox_set_current"])
+                try:
+                    if self.get_available(cp_id) or WALLBOX_TYPE == 'ABL':
+                        #if WALLBOX_TYPE == 'ABL':
+                        #    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_availability.name, state=True)
+                        ##    await asyncio.sleep(1)
+                        #    await self.set_charger_state(cp_id=cp_id, service_name=csvcs.service_charge_start.name)
+                        #await asyncio.sleep(2)
+                        await self.set_max_charge_rate_amps(cp_id, value=amps)
+                        #await asyncio.sleep(10)
+                        self.busy_setting_current = False
+                except ProtocolError as pe:
+                    _LOGGER.error(pe)
+                    #await asyncio.sleep(10)
+                    self.busy = False
+                    self.busy_setting_current = False
+                    self.busy_setting_state = False
+                    # Restart backend if lost connection
+                    await CentralSystem.create(self.hass, self.entry)
+                #self.hass.async_create_task(self.set_max_charge_rate_amps(cp_id, value=amps))
+                #asyncio.run_coroutine_threadsafe(self.set_max_charge_rate_amps(cp_id, value=amps), self.hass.loop).result()
+                _LOGGER.info("Set current to %sA", amps)
+            #await asyncio.sleep(2)
+            _LOGGER.debug("end async_mqtt_on_message()")
+            #self.busy_setting_current = False
+            #self.busy_setting_state = False
+            #self.busy = False
+            #self.mqtt_timeout_timer = time.time()
+            #_LOGGER.debug("All calls from the message have been recieved. Allowing new MQTT Messages from now on.")
+    except Exception as e:
+        _LOGGER.error(f"Error in async_mqtt_on_message: {e}")
+    finally:
+        _LOGGER.info("async_mqtt_on_message finished")
+        
 
 
 class CentralSystem:
@@ -357,7 +289,7 @@ class CentralSystem:
             )
         else:
             self.ssl_context = None
-                # MQTT Client
+        # MQTT Client
         self.mqtt_user = MQTT_USER
         self.mqtt_password = MQTT_PASSWORD
         self.mqtt_server = MQTT_SERVER
@@ -378,17 +310,17 @@ class CentralSystem:
         self.mqtt_timeout_timer = 0
 
         if self.mqtt_port != 1883:
-            _LOGGER.info('[OCPP MQTT Client start] mqtt: tls_set...')
+            _LOGGER.info('[OCPP MQTT Client start cs] mqtt: tls_set...')
 
             self.mqtt_client.tls_set(ca_certs=None, certfile=None, keyfile=None,
                             cert_reqs=ssl.CERT_REQUIRED,
-    #                        tls_version=ssl.PROTOCOL_TLS, ciphers=None)
+                            # tls_version=ssl.PROTOCOL_TLS, ciphers=None)
                             tls_version=ssl.PROTOCOL_TLSv1_2, ciphers=None)
 
         if self.mqtt_user != '':
-            _LOGGER.info('[OCPP MQTT Client start] mqtt: set user/password.... ')
+            _LOGGER.info('[OCPP MQTT Client start cs] mqtt: set user/password.... ')
             self.mqtt_client.username_pw_set(self.mqtt_user, self.mqtt_passwd)
-        _LOGGER.info('[OCPP MQTT Client start] mqtt: connecting.... ')
+        _LOGGER.info('[OCPP MQTT Client start cs] mqtt: connecting.... ')
 
         ### versuchsweise: Eine Schleife, die wartet bis die Verbindung zum Broker da ist. Wartezeit 2 Minuten
         # Das hat den Sinn, dass überhaupt mal gewartet wird, damit nicht zu schnell direkt mit
@@ -409,7 +341,7 @@ class CentralSystem:
                 topic = f"{MQTT_TOPIC_PREFIX}/WallboxInfo/0000"
                 self.mqtt_client.publish(topic, payload, True)
             except Exception as exc:
-                _LOGGER.info("[OCPP MQTT Client start] Exception in OnStart: %s", exc)
+                _LOGGER.info("[OCPP MQTT Client start cs] Exception in OnStart: %s", exc)
                 self.connected_flag = False
                 return
 
@@ -417,28 +349,50 @@ class CentralSystem:
             if not self.connected_flag:
                 time.sleep(0.5)
                 loopCount = loopCount + 1
-                _LOGGER.info('[OCPP MQTT Client start] loop to connect: %s', str(loopCount))
+                _LOGGER.info('[OCPP MQTT Client start cs] loop to connect: %s', str(loopCount))
                 if loopCount > 3:
-    #            if loopCount > 24:  # 2 Minutes (24*5 seconds)
-                    _LOGGER.info("[OCPP MQTT Client start] loop to connect cancelled, not connected")
+                    _LOGGER.info("[OCPP MQTT Client start cs] loop to connect cancelled, not connected")
                     return
-        _LOGGER.info('[OCPP MQTT Client start] mqtt: loop started, connected, end of init.... ')
+        _LOGGER.info('[OCPP MQTT Client start cs] mqtt: loop started, connected, end of init.... ')
+        
+        self.mom_client = None
+        self.mom_userdata = None
+        self.mom_msg = None
+        self.mom_read_flag = True
+        
+        
+        #self.cancel_task = self.hass.helpers.event.async_track_time_interval(self.hass, self.wallbox_manager_start, datetime.timedelta(seconds=3))
+        #self.task = asyncio.create_task(self.wallbox_manager_start())
+        #self.hass.get_event_loop().run_until_complete(self.wallbox_manager_start())
 
+    async def wallbox_manager_start(self):
+        while True:
+            #_LOGGER.debug(f"wallbox_manager_call")
+            if self.mom_read_flag:
+                #_LOGGER.debug("All mqtt messages have already been managed.")
+                pass
+            else:
+                await async_mqtt_on_message(self, self.mom_client, self.mom_userdata, self.mom_msg)
+                self.mom_read_flag = True
+            await asyncio.sleep(1)
+            
+    def wallbox_manager_end(self):
+        self.cancel_task()
 
     def mqtt_on_connect(self, client, userdata, flags, rc):
-        _LOGGER.info(f'Mqtt connected flags {str(flags)} result code {str(rc)}')
+        _LOGGER.info(f'Mqtt cs connected flags {str(flags)} result code {str(rc)}')
         if rc == 0:
             self.connected_flag = True
-            _LOGGER.info('mqtt: connected!')
+            _LOGGER.info('mqtt cs: connected!')
 
-        _LOGGER.info('mqtt: on_connect %s', str(rc))
+        _LOGGER.info('mqtt cs: on_connect %s', str(rc))
         
 
     def mqtt_on_disconnect(self, client, userdata, rc):
         _LOGGER.info("Disconnected with result code: %s", rc)
         reconnect_count, reconnect_delay = 0, FIRST_RECONNECT_DELAY
         while reconnect_count < MAX_RECONNECT_COUNT:
-            _LOGGER.info("Reconnecting in %d seconds...", reconnect_delay)
+            #_LOGGER.info("Reconnecting in %d seconds...", reconnect_delay)
             time.sleep(reconnect_delay)
 
             try:
@@ -447,7 +401,8 @@ class CentralSystem:
                 for cp_id, cp in self.charge_points.items():
                     serial = cp._metrics["ID"]._value
                     self.mqtt_client.on_message = self.mqtt_on_message
-                    _LOGGER.info(f"CentralSystem WallboxControl {MQTT_TOPIC_PREFIX}/WallboxControl/%s", serial)
+                    _LOGGER.info(f"CentralSystem WallboxControl disconnect {MQTT_TOPIC_PREFIX}/WallboxControl/%s", serial)
+                    _LOGGER.debug(f"SUBSCRIBE TO: {MQTT_TOPIC_PREFIX}/WallboxControl/{serial}")
                     self.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}/WallboxControl/{serial}")
                 return
             except Exception as err:
@@ -461,8 +416,8 @@ class CentralSystem:
 
     def mqtt_on_message(self, client, userdata, msg):
         _LOGGER.info(f"[Central System]Received `{msg.payload.decode()}` from `{msg.topic}` topic")
-        #task = async_mqtt_on_message(self, client, userdata, msg)
-        #task = asyncio.wait_for(task, timeout=40.0)
+        
+        #task = asyncio.wait_for(async_mqtt_on_message(self, client, userdata, msg), timeout=40.0)
         #try: 
         #    self.hass.async_create_task(task)
         #except TimeoutError:
@@ -470,14 +425,26 @@ class CentralSystem:
         #    self.busy = False
         #    self.busy_setting_current = False
         #    self.busy_setting_state = False
-        self.hass.async_create_task(async_mqtt_on_message(self, client, userdata, msg))
-            
-
+        
+        #_LOGGER.debug(f"Starting async_create_task now...")
+        #self.hass.async_create_task(async_mqtt_on_message(self, client, userdata, msg))
+        #asyncio.create_task(async_mqtt_on_message(self, client, userdata, msg))
+        
+        #asyncio.new_event_loop().run_until_complete(async_mqtt_on_message(self, client, userdata, msg))
+        #self.hass.get_event_loop().run_until_complete(async_mqtt_on_message(self, client, userdata, msg))
+        
+        #_LOGGER.debug(f"mqtt_on_message finished")
+        
+        self.mom_client = client
+        self.mom_userdata = userdata
+        self.mom_msg = msg
+        self.mom_read_flag = False
 
     def reconnect_mqtt(self, serial):
         """Reconnect happens automatically, resubscribe is needed."""
         self.mqtt_client.on_message = self.mqtt_on_message
-        _LOGGER.info(f"CentralSystem WallboxControl {MQTT_TOPIC_PREFIX}WallboxControl/%s", serial)
+        _LOGGER.debug(f"SUBSCRIBE TO: {MQTT_TOPIC_PREFIX}/WallboxControl/{serial}")
+        _LOGGER.info(f"CentralSystem WallboxControl reconnect {MQTT_TOPIC_PREFIX}/WallboxControl/%s", serial)
         self.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}/WallboxControl/{serial}")
 
 
@@ -502,6 +469,13 @@ class CentralSystem:
     async def on_connect(
         self, websocket: websockets.server.WebSocketServerProtocol, path: str
     ):
+        _LOGGER.debug("on_connect start")
+        #self.cancel_task = self.hass.helpers.event.async_track_time_interval(self.hass, self.wallbox_manager_start, datetime.timedelta(seconds=3))
+        #self.task = asyncio.create_task(self.wallbox_manager_start())
+        #asyncio.get_event_loop().run_until_complete(self.wallbox_manager_start())
+        self.hass.async_create_task(self.wallbox_manager_start())
+        _LOGGER.debug("on_connect loop started")
+        
         """Request handler executed for every new OCPP connection."""
         if self.config.get(CONF_SKIP_SCHEMA_VALIDATION, DEFAULT_SKIP_SCHEMA_VALIDATION):
             _LOGGER.warning("Skipping websocket subprotocol validation")
@@ -711,14 +685,14 @@ class ChargePoint(cp):
         self.mqtt_port = MQTT_PORT
         # TODO find unique client ID for every ChargePoint
         self.mqtt_client = pahomqtt.Client(client_id=f"WBCP_testpi_{randint(0, 9999)}")
-        self.mqtt_keepalive = 30
+        self.mqtt_keepalive = 180
         self.mqtt_client.on_connect = self.mqtt_on_connect
         self.mqtt_client.on_disconnect = self.mqtt_on_disconnect
         self.connected_flag = False
         self.mqtt_client.on_message = self.mqtt_on_message
 
         if self.mqtt_port != 1883:
-            _LOGGER.info('[OCPP MQTT Client start] mqtt: tls_set...')
+            _LOGGER.info('[OCPP MQTT Client start cp] mqtt: tls_set...')
 
             self.mqtt_client.tls_set(ca_certs=None, certfile=None, keyfile=None,
                             cert_reqs=ssl.CERT_REQUIRED,
@@ -726,9 +700,9 @@ class ChargePoint(cp):
                             tls_version=ssl.PROTOCOL_TLSv1_2, ciphers=None)
 
         if self.mqtt_user != '':
-            _LOGGER.info('[OCPP MQTT Client start] mqtt: set user/password.... ')
+            _LOGGER.info('[OCPP MQTT Client start cp] mqtt: set user/password.... ')
             self.mqtt_client.username_pw_set(self.mqtt_user, self.mqtt_passwd)
-        _LOGGER.info('[OCPP MQTT Client start] mqtt: connecting.... ')
+        _LOGGER.info('[OCPP MQTT Client start cp] mqtt: connecting.... ')
 
         ### versuchsweise: Eine Schleife, die wartet bis die Verbindung zum Broker da ist. Wartezeit 2 Minuten
         # Das hat den Sinn, dass überhaupt mal gewartet wird, damit nicht zu schnell direkt mit
@@ -749,36 +723,36 @@ class ChargePoint(cp):
                 topic = f"{MQTT_TOPIC_PREFIX}/WallboxInfo/0000"
                 self.mqtt_client.publish(topic, payload, True)
             except Exception as exc:
-                _LOGGER.info("[OCPP MQTT Client start] Exception in OnStart: %s", str(exc))
+                _LOGGER.info("[OCPP MQTT Client start cp] Exception in OnStart: %s", str(exc))
                 self.connected_flag = False
                 return
 
             # wait for next try or return -> caller should check connected_flag
             if not self.connected_flag:
-                time.sleep(0.5)
+                time.sleep(2.0) # was 0.5
                 loopCount = loopCount + 1
-                _LOGGER.info('[OCPP MQTT Client start] loop to connect: %s', str(loopCount))
-                if loopCount > 3:
+                _LOGGER.info('[OCPP MQTT Client start cp] loop to connect: %s', str(loopCount))
+                if loopCount > 5:
     #            if loopCount > 24:  # 2 Minutes (24*5 seconds)
-                    _LOGGER.info("[OCPP MQTT Client start] loop to connect cancelled, not connected")
+                    _LOGGER.info("[OCPP MQTT Client start cp] loop to connect cancelled, not connected")
                     return
-        _LOGGER.info('[OCPP MQTT Client start] mqtt: loop started, connected, end of init.... ')
+        _LOGGER.info('[OCPP MQTT Client start cp] mqtt: loop started, connected, end of init.... ')
 
 ### Nach __init__()
     def mqtt_on_connect(self, client, userdata, flags, rc):
-        _LOGGER.info(f'Mqtt connected flags {str(flags)} result code {str(rc)}')
+        _LOGGER.info(f'Mqtt cp connected flags {str(flags)} result code {str(rc)}')
         if rc == 0:
             self.connected_flag = True
-            _LOGGER.info('mqtt: connected!')
+            _LOGGER.info('mqtt cp: connected!')
 
-        _LOGGER.info('mqtt: on_connect %s', str(rc))
+        _LOGGER.info('mqtt cp: on_connect %s', str(rc))
         
 
     def mqtt_on_disconnect(self, client, userdata, rc):
         _LOGGER.info("Disconnected with result code: %s", rc)
         reconnect_count, reconnect_delay = 0, FIRST_RECONNECT_DELAY
         while reconnect_count < MAX_RECONNECT_COUNT:
-            _LOGGER.info("Reconnecting in %d seconds...", reconnect_delay)
+            #_LOGGER.info("Reconnecting in %d seconds...", reconnect_delay)
             time.sleep(reconnect_delay)
 
             try:
@@ -795,7 +769,7 @@ class ChargePoint(cp):
 
 
     def mqtt_on_message(self, client, userdata, msg):
-        _LOGGER.info(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+        _LOGGER.info(f"CP Received `{msg.payload.decode()}` from `{msg.topic}` topic")
 
         #if "WallboxControl" in msg.topic:
         #    msg_json = json.loads(msg.payload.decode())
@@ -1089,6 +1063,7 @@ class ChargePoint(cp):
                 _LOGGER.warning("Failed with response: %s", resp.status)
                 return_value = False
             
+        _LOGGER.debug(f"SUBSCRIBE TO: {MQTT_TOPIC_PREFIX}/WallboxControl/{self.serial}")
         self.central.mqtt_client.subscribe(f"{MQTT_TOPIC_PREFIX}/WallboxControl/{self.serial}")
         return return_value
 
@@ -1128,8 +1103,10 @@ class ChargePoint(cp):
                 return False
 
         if WALLBOX_TYPE == 'ABL':
+            rc = True
             for l in LIMITER:
-                await self.data_transfer('ABL', 'SetLimit', f'logicalid={l};value={limit_amps}')
+                rc = rc and await self.data_transfer('ABL', 'SetLimit', f'logicalid={l};value={limit_amps}')
+            return rc
         elif prof.SMART in self._attr_supported_features:
             resp = await self.get_configuration(
                 ckey.charging_schedule_allowed_charging_rate_unit.value
@@ -1722,6 +1699,10 @@ class ChargePoint(cp):
     @on(Action.MeterValues)
     def on_meter_values(self, connector_id: int, meter_value: dict, **kwargs):
         """Request handler for MeterValues Calls."""
+        _LOGGER.debug("on_meter_values______________(phases)____________________________________________________________________________________________________")
+        _LOGGER.debug(connector_id)
+        _LOGGER.debug(meter_value)
+        _LOGGER.debug(kwargs)
 
         transaction_id: int = kwargs.get(om.transaction_id.name, 0)
 
@@ -1883,6 +1864,11 @@ class ChargePoint(cp):
     @on(Action.StatusNotification)
     def on_status_notification(self, connector_id, error_code, status, **kwargs):
         """Handle a status notification."""
+        _LOGGER.debug("on_status_notification_________________________________________________________________________________________________________________")
+        _LOGGER.debug(connector_id)
+        _LOGGER.debug(error_code)
+        _LOGGER.debug(status)
+        _LOGGER.debug(kwargs)
         #_LOGGER.info("self._metrics %s", self._metrics)
         #payload = OrderedDict()
         #payload['voltage'] = 0
@@ -2008,6 +1994,12 @@ class ChargePoint(cp):
     @on(Action.StartTransaction)
     def on_start_transaction(self, connector_id, id_tag, meter_start, **kwargs):
         """Handle a Start Transaction request."""
+        
+        _LOGGER.debug("on_start_transaction_________________________________________________________________________________________________________________")
+        _LOGGER.debug(connector_id)
+        _LOGGER.debug(id_tag)
+        _LOGGER.debug(meter_start)
+        _LOGGER.debug(kwargs)
 
         auth_status = self.get_authorization_status(id_tag)
         if auth_status == AuthorizationStatus.accepted.value:
@@ -2065,6 +2057,9 @@ class ChargePoint(cp):
     @on(Action.DataTransfer)
     def on_data_transfer(self, vendor_id, **kwargs):
         """Handle a Data transfer request."""
+        _LOGGER.debug("on_data_transfer_________________________________________________________________________________________________________________")
+        _LOGGER.debug(vendor_id)
+        _LOGGER.debug(kwargs)
         _LOGGER.debug("Data transfer received from %s: %s", self.id, kwargs)
         self._metrics[cdet.data_transfer.value].value = datetime.now(tz=timezone.utc)
         self._metrics[cdet.data_transfer.value].extra_attr = {vendor_id: kwargs}

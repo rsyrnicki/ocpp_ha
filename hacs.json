@@ -3,6 +3,7 @@
   "content_in_root": false,
   "homeassistant": "2022.7.0",
   "render_readme": true,
-  "zip_release": true,
-  "filename": "ocpp.zip"
+  "zip_release": false,
+  "zip_release___": true,
+  "filename___": "ocpp.zip"
 }
