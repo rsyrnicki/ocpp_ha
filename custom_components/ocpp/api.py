@@ -23,7 +23,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry, entity_component, entity_registry
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-import websockets.connection
+import websockets.protocol
 import websockets.server
 
 from ocpp.exceptions import NotImplementedError, ProtocolError
@@ -890,7 +890,7 @@ class ChargePoint(cp):
 
             for measurand in all_measurands.split(","):
                 _LOGGER.debug(f"'{self.id}' trying measurand '{measurand}'")
-                req = call.ChangeConfigurationPayload(key=key, value=measurand)
+                req = call.ChangeConfiguration(key=key, value=measurand)
                 resp = await self.call(req)
                 if resp.status == ConfigurationStatus.accepted:
                     _LOGGER.debug(f"'{self.id}' adding measurand '{measurand}'")
@@ -990,7 +990,7 @@ class ChargePoint(cp):
 
     async def get_supported_features(self):
         """Get supported features."""
-        req = call.GetConfigurationPayload(key=[ckey.supported_feature_profiles.value])
+        req = call.GetConfiguration(key=[ckey.supported_feature_profiles.value])
         resp = await self.call(req)
         _LOGGER.info(f"supported features: {resp}")
         if resp.configuration_key != []:
@@ -1035,9 +1035,7 @@ class ChargePoint(cp):
 
     async def trigger_boot_notification(self):
         """Trigger a boot notification."""
-        req = call.TriggerMessagePayload(
-            requested_message=MessageTrigger.boot_notification
-        )
+        req = call.TriggerMessage(requested_message=MessageTrigger.boot_notification)
         resp = await self.call(req)
         if resp.status == TriggerMessageStatus.accepted:
             self.triggered_boot_notification = True
@@ -1054,7 +1052,7 @@ class ChargePoint(cp):
         nof_connectors = int(self._metrics[cdet.connectors.value].value)
         for id in range(0, nof_connectors + 1):
             _LOGGER.debug(f"trigger status notification for connector={id}")
-            req = call.TriggerMessagePayload(
+            req = call.TriggerMessage(
                 requested_message=MessageTrigger.status_notification,
                 connector_id=int(id),
             )
@@ -1069,7 +1067,7 @@ class ChargePoint(cp):
 
     async def clear_profile(self):
         """Clear all charging profiles."""
-        req = call.ClearChargingProfilePayload()
+        req = call.ClearChargingProfile()
         resp = await self.call(req)
         if resp.status == ClearChargingProfileStatus.accepted:
             return True
@@ -1089,7 +1087,7 @@ class ChargePoint(cp):
     ):
         """Set a charging profile with defined limit."""
         if profile is not None:  # assumes advanced user and correct profile format
-            req = call.SetChargingProfilePayload(
+            req = call.SetChargingProfile(
                 connector_id=conn_id, cs_charging_profiles=profile
             )
             resp = await self.call(req)
@@ -1126,7 +1124,7 @@ class ChargePoint(cp):
                 ckey.charge_profile_max_stack_level.value
             )
             stack_level = int(resp)
-            req = call.SetChargingProfilePayload(
+            req = call.SetChargingProfile(
                 connector_id=conn_id,
                 cs_charging_profiles={
                     om.charging_profile_id.value: 8,
@@ -1155,7 +1153,7 @@ class ChargePoint(cp):
                 "ChargePointMaxProfile is not supported by this charger, trying TxDefaultProfile instead..."
             )
             # try a lower stack level for chargers where level < maximum, not <=
-            req = call.SetChargingProfilePayload(
+            req = call.SetChargingProfile(
                 connector_id=conn_id,
                 cs_charging_profiles={
                     om.charging_profile_id.value: 8,
@@ -1204,7 +1202,7 @@ class ChargePoint(cp):
         else:
             typ = AvailabilityType.inoperative.value
 
-        req = call.ChangeAvailabilityPayload(connector_id=0, type=typ)
+        req = call.ChangeAvailability(connector_id=0, type=typ)
         resp = await self.call(req)
         self.publish_metrics()
         if resp.status == AvailabilityStatus.accepted:
@@ -1229,7 +1227,7 @@ class ChargePoint(cp):
         else: 
             await self.configure('FreeCharging', "true")
             await self.configure('FreeChargingOffline', "true")
-        req = call.RemoteStartTransactionPayload(
+        req = call.RemoteStartTransaction(
             connector_id=1, id_tag=self._metrics[cdet.identifier.value].value[:20]
         )
         resp = await self.call(req)
@@ -1255,9 +1253,7 @@ class ChargePoint(cp):
         """
         if self.active_transaction_id == 0:
             return True
-        req = call.RemoteStopTransactionPayload(
-            transaction_id=self.active_transaction_id
-        )
+        req = call.RemoteStopTransaction(transaction_id=self.active_transaction_id)
         try:
             self.busy_setting_current = True
             await asyncio.sleep(2)
@@ -1294,7 +1290,7 @@ class ChargePoint(cp):
     async def reset(self, typ: str = ResetType.hard):
         """Hard reset charger unless soft reset requested."""
         self._metrics[cstat.reconnects.value].value = 0
-        req = call.ResetPayload(typ)
+        req = call.Reset(typ)
         resp = await self.call(req)
         self.publish_metrics()
         if resp.status == ResetStatus.accepted:
@@ -1306,7 +1302,7 @@ class ChargePoint(cp):
 
     async def unlock(self, connector_id: int = 1):
         """Unlock charger if requested."""
-        req = call.UnlockConnectorPayload(connector_id)
+        req = call.UnlockConnector(connector_id)
         resp = await self.call(req)
         self.publish_metrics()
         if resp.status == UnlockStatus.unlocked:
@@ -1329,7 +1325,7 @@ class ChargePoint(cp):
             update_time = (
                 datetime.now(tz=timezone.utc) + timedelta(hours=wait_time)
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
-            req = call.UpdateFirmwarePayload(location=url, retrieve_date=update_time)
+            req = call.UpdateFirmware(location=url, retrieve_date=update_time)
             resp = await self.call(req)
             _LOGGER.info("Response: %s", resp)
             return True
@@ -1343,9 +1339,9 @@ class ChargePoint(cp):
             schema = vol.Schema(vol.Url())
             try:
                 url = schema(upload_url)
-            except vol.MultipleInvalid as e_err:
-                _LOGGER.warning("Failed to parse url: %s", e_err)
-            req = call.GetDiagnosticsPayload(location=url)
+            except vol.MultipleInvalid as e:
+                _LOGGER.warning("Failed to parse url: %s", e)
+            req = call.GetDiagnostics(location=url)
             resp = await self.call(req)
             _LOGGER.info("Response: %s", resp)
             return True
@@ -1355,9 +1351,7 @@ class ChargePoint(cp):
 
     async def data_transfer(self, vendor_id: str, message_id: str = "", data: str = ""):
         """Request vendor specific data transfer from charger."""
-        req = call.DataTransferPayload(
-            vendor_id=vendor_id, message_id=message_id, data=data
-        )
+        req = call.DataTransfer(vendor_id=vendor_id, message_id=message_id, data=data)
         self.publish_metrics()
         resp = await self.call(req)
         if resp.status == DataTransferStatus.accepted:
@@ -1383,9 +1377,9 @@ class ChargePoint(cp):
     async def get_configuration(self, key: str = ""):
         """Get Configuration of charger for supported keys else return None."""
         if key == "":
-            req = call.GetConfigurationPayload()
+            req = call.GetConfiguration()
         else:
-            req = call.GetConfigurationPayload(key=[key])
+            req = call.GetConfiguration(key=[key])
         resp = await self.call(req)
         if resp.configuration_key is not None:
             value = resp.configuration_key[0][om.value.value]
@@ -1413,7 +1407,7 @@ class ChargePoint(cp):
         If the key has a different value a ChangeConfiguration request is issued.
 
         """
-        req = call.GetConfigurationPayload(key=[key])
+        req = call.GetConfiguration(key=[key])
 
         resp = await self.call(req)
 
@@ -1432,7 +1426,7 @@ class ChargePoint(cp):
                 _LOGGER.warning("%s is a read only setting", key)
                 await self.notify_ha(f"Warning: {key} is read-only")
 
-        req = call.ChangeConfigurationPayload(key=key, value=value)
+        req = call.ChangeConfiguration(key=key, value=value)
 
         resp = await self.call(req)
 
@@ -1532,7 +1526,7 @@ class ChargePoint(cp):
 
     async def _handle_call(self, msg):
         try:
-            await super()._handle_call(msg)
+            await self.hass.async_create_task(super()._handle_call(msg))
         except NotImplementedError as e:
             response = msg.create_call_error(e).to_json()
             await self._send(response)
@@ -1616,7 +1610,7 @@ class ChargePoint(cp):
         )
 
     def process_phases(self, data):
-        """Process phase data from meter values payload."""
+        """Process phase data from meter values ."""
 
         def average_of_nonzero(values):
             nonzero_values: list = [v for v in values if float(v) != 0.0]
@@ -1696,7 +1690,7 @@ class ChargePoint(cp):
                     self._metrics[metric].value = float(metric_value)
                     self._metrics[metric].unit = metric_unit
 
-    @on(Action.MeterValues)
+    @on(Action.meter_values)
     def on_meter_values(self, connector_id: int, meter_value: dict, **kwargs):
         """Request handler for MeterValues Calls."""
         _LOGGER.debug("on_meter_values______________(phases)____________________________________________________________________________________________________")
@@ -1828,12 +1822,12 @@ class ChargePoint(cp):
                 ] = self._metrics[cstat.id_tag.value].value
         self.publish_metrics()
         self.hass.async_create_task(self.central.update(self.central.cpid))
-        return call_result.MeterValuesPayload()
+        return call_result.MeterValues()
 
-    @on(Action.BootNotification)
+    @on(Action.boot_notification)
     def on_boot_notification(self, **kwargs):
         """Handle a boot notification."""
-        resp = call_result.BootNotificationPayload(
+        resp = call_result.BootNotification(
             current_time=datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             interval=3600,
             status=RegistrationStatus.accepted.value,
@@ -1861,7 +1855,7 @@ class ChargePoint(cp):
             self.hass.async_create_task(self.post_connect())
         return resp
 
-    @on(Action.StatusNotification)
+    @on(Action.status_notification)
     def on_status_notification(self, connector_id, error_code, status, **kwargs):
         """Handle a status notification."""
         _LOGGER.debug("on_status_notification_________________________________________________________________________________________________________________")
@@ -1913,26 +1907,26 @@ class ChargePoint(cp):
             if Measurand.power_reactive_export.value in self._metrics:
                 self._metrics[Measurand.power_reactive_export.value].value = 0
         self.hass.async_create_task(self.central.update(self.central.cpid))
-        return call_result.StatusNotificationPayload()
+        return call_result.StatusNotification()
 
-    @on(Action.FirmwareStatusNotification)
+    @on(Action.firmware_status_notification)
     def on_firmware_status(self, status, **kwargs):
         """Handle firmware status notification."""
         self._metrics[cstat.firmware_status.value].value = status
         self.hass.async_create_task(self.central.update(self.central.cpid))
         self.hass.async_create_task(self.notify_ha(f"Firmware upload status: {status}"))
-        return call_result.FirmwareStatusNotificationPayload()
+        return call_result.FirmwareStatusNotification()
 
-    @on(Action.DiagnosticsStatusNotification)
+    @on(Action.diagnostics_status_notification)
     def on_diagnostics_status(self, status, **kwargs):
         """Handle diagnostics status notification."""
         _LOGGER.info("Diagnostics upload status: %s", status)
         self.hass.async_create_task(
             self.notify_ha(f"Diagnostics upload status: {status}")
         )
-        return call_result.DiagnosticsStatusNotificationPayload()
+        return call_result.DiagnosticsStatusNotification()
 
-    @on(Action.SecurityEventNotification)
+    @on(Action.security_event_notification)
     def on_security_event(self, type, timestamp, **kwargs):
         """Handle security event notification."""
         _LOGGER.info(
@@ -1944,7 +1938,7 @@ class ChargePoint(cp):
         self.hass.async_create_task(
             self.notify_ha(f"Security event notification received: {type}")
         )
-        return call_result.SecurityEventNotificationPayload()
+        return call_result.SecurityEventNotification()
 
     def get_authorization_status(self, id_tag):
         """Get the authorization status for an id_tag."""
@@ -1984,14 +1978,14 @@ class ChargePoint(cp):
 
         return auth_status
 
-    @on(Action.Authorize)
+    @on(Action.authorize)
     def on_authorize(self, id_tag, **kwargs):
         """Handle an Authorization request."""
         self._metrics[cstat.id_tag.value].value = id_tag
         auth_status = self.get_authorization_status(id_tag)
-        return call_result.AuthorizePayload(id_tag_info={om.status.value: auth_status})
+        return call_result.Authorize(id_tag_info={om.status.value: auth_status})
 
-    @on(Action.StartTransaction)
+    @on(Action.start_transaction)
     def on_start_transaction(self, connector_id, id_tag, meter_start, **kwargs):
         """Handle a Start Transaction request."""
         
@@ -2008,18 +2002,18 @@ class ChargePoint(cp):
             self._metrics[cstat.stop_reason.value].value = ""
             self._metrics[csess.transaction_id.value].value = self.active_transaction_id
             self._metrics[csess.meter_start.value].value = int(meter_start) / 1000
-            result = call_result.StartTransactionPayload(
+            result = call_result.StartTransaction(
                 id_tag_info={om.status.value: AuthorizationStatus.accepted.value},
                 transaction_id=self.active_transaction_id,
             )
         else:
-            result = call_result.StartTransactionPayload(
+            result = call_result.StartTransaction(
                 id_tag_info={om.status.value: auth_status}, transaction_id=0
             )
         self.hass.async_create_task(self.central.update(self.central.cpid))
         return result
 
-    @on(Action.StopTransaction)
+    @on(Action.stop_transaction)
     def on_stop_transaction(self, meter_stop, timestamp, transaction_id, **kwargs):
         """Stop the current transaction."""
 
@@ -2050,11 +2044,11 @@ class ChargePoint(cp):
         if Measurand.power_reactive_export.value in self._metrics:
             self._metrics[Measurand.power_reactive_export.value].value = 0
         self.hass.async_create_task(self.central.update(self.central.cpid))
-        return call_result.StopTransactionPayload(
+        return call_result.StopTransaction(
             id_tag_info={om.status.value: AuthorizationStatus.accepted.value}
         )
 
-    @on(Action.DataTransfer)
+    @on(Action.data_transfer)
     def on_data_transfer(self, vendor_id, **kwargs):
         """Handle a Data transfer request."""
         _LOGGER.debug("on_data_transfer_________________________________________________________________________________________________________________")
@@ -2063,18 +2057,16 @@ class ChargePoint(cp):
         _LOGGER.debug("Data transfer received from %s: %s", self.id, kwargs)
         self._metrics[cdet.data_transfer.value].value = datetime.now(tz=timezone.utc)
         self._metrics[cdet.data_transfer.value].extra_attr = {vendor_id: kwargs}
-        return call_result.DataTransferPayload(status=DataTransferStatus.accepted.value)
+        return call_result.DataTransfer(status=DataTransferStatus.accepted.value)
 
-    @on(Action.Heartbeat)
+    @on(Action.heartbeat)
     def on_heartbeat(self, **kwargs):
         """Handle a Heartbeat."""
         now = datetime.now(tz=timezone.utc)
         self._metrics[cstat.heartbeat.value].value = now
         self.publish_metrics()
         self.hass.async_create_task(self.central.update(self.central.cpid))
-        return call_result.HeartbeatPayload(
-            current_time=now.strftime("%Y-%m-%dT%H:%M:%SZ")
-        )
+        return call_result.Heartbeat(current_time=now.strftime("%Y-%m-%dT%H:%M:%SZ"))
 
     @property
     def supported_features(self) -> int:
